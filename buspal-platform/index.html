@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BusPal — Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./shared/css/style.css" />
+<link rel="stylesheet" href="./css/auth.css" />
+<script>
+  (function(){
+    var saved = localStorage.getItem('buspal-theme');
+    var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+</head>
+<body class="auth-body">
+
+  <button class="theme-toggle auth-theme-toggle" id="themeToggle" title="Switch theme" aria-label="Switch theme">
+    <span class="theme-track-icon left">☾</span>
+    <span class="theme-track-icon right">☀</span>
+    <span class="theme-knob"></span>
+  </button>
+
+  <div class="auth-shell">
+    <div class="auth-brand-side">
+      <div class="auth-hero-media"></div>
+      <div class="auth-hero-scrim"></div>
+      <div class="auth-hero-content">
+        <div class="brand auth-brand">
+          <img src="./shared/assets/logo.png" alt="BusPal" class="brand-mark" />
+          <span class="brand-name">BusPal</span>
+        </div>
+        <div class="auth-hero-copy">
+          <div class="auth-hero-kicker">BT Express</div>
+          <h1 class="auth-hero-headline">Where every<br/>journey is on time</h1>
+          <p class="auth-hero-sub">One account for booking, tracking, and running the fleet — built for the road ahead.</p>
+        </div>
+        <div class="auth-brand-chips">
+          <span class="hero-chip">Real-time GPS tracking</span>
+          <span class="hero-chip">SOS emergency support</span>
+          <span class="hero-chip">Role-based access</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="auth-card-side">
+      <div class="card auth-card">
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="login">Log in</button>
+          <button class="auth-tab" data-tab="register">Create account</button>
+        </div>
+
+        <!-- LOGIN -->
+        <div class="auth-panel active" id="panel-login">
+          <form id="loginForm" class="form-grid">
+            <div class="field-v">
+              <label for="liEmail">Email</label>
+              <input type="email" id="liEmail" placeholder="you@example.com" required />
+            </div>
+            <div class="field-v">
+              <label for="liPass">Password</label>
+              <input type="password" id="liPass" placeholder="••••••••" required />
+            </div>
+            <button type="button" class="auth-forgot-link" id="forgotLink">Forgot password?</button>
+            <div class="error" id="loginError" style="color:var(--danger);font-size:13px"></div>
+            <button class="btn brand block" type="submit">Log in</button>
+          </form>
+          <div class="auth-demo-note">
+            <strong>Demo accounts</strong>
+            <div class="auth-demo-row"><span>Passenger</span><code>kavishali@example.com / demo123</code></div>
+            <div class="auth-demo-row"><span>Owner</span><code>ops@btexpress.lk / demo123</code></div>
+            <div class="auth-demo-row"><span>Manager</span><code>manager@btexpress.lk / demo123</code></div>
+          </div>
+        </div>
+
+        <!-- FORGOT PASSWORD -->
+        <div class="auth-panel" id="panel-forgot">
+          <button type="button" class="auth-back-link" id="backToLogin">← Back to log in</button>
+          <p class="muted small" style="margin:10px 0 16px">Enter the email on your account. In production this sends a reset link — for this demo, it issues a new temporary password right here.</p>
+          <form id="forgotForm" class="form-grid">
+            <div class="field-v"><label for="fpEmail">Email</label><input type="email" id="fpEmail" placeholder="you@example.com" required /></div>
+            <div class="error" id="forgotError" style="color:var(--danger);font-size:13px"></div>
+            <button class="btn brand block" type="submit">Send reset</button>
+          </form>
+          <div class="auth-demo-note" id="forgotResult" hidden></div>
+        </div>
+
+        <!-- REGISTER -->
+        <div class="auth-panel" id="panel-register">
+          <form id="registerForm" class="form-grid">
+            <div class="row-2">
+              <div class="field-v"><label for="rName">Full name</label><input type="text" id="rName" placeholder="Jane Perera" required /></div>
+              <div class="field-v"><label for="rPhone">Phone</label><input type="tel" id="rPhone" placeholder="07X XXX XXXX" required /></div>
+            </div>
+            <div class="field-v"><label for="rEmail">Email</label><input type="email" id="rEmail" placeholder="you@example.com" required /></div>
+            <div class="row-2">
+              <div class="field-v">
+                <label for="rPass">Password</label>
+                <input type="password" id="rPass" placeholder="Create a password" required />
+                <div class="pw-strength-wrap" id="rPassMeter" hidden>
+                  <div class="pw-strength-track"><div class="pw-strength-fill" id="rPassFill"></div></div>
+                  <span class="pw-strength-label" id="rPassLabel"></span>
+                </div>
+              </div>
+              <div class="field-v"><label for="rPass2">Confirm password</label><input type="password" id="rPass2" placeholder="Repeat password" required /></div>
+            </div>
+            <div class="error" id="registerError" style="color:var(--danger);font-size:13px"></div>
+            <button class="btn brand block" type="submit">Create passenger account</button>
+          </form>
+          <div class="auth-operator-note">
+            <strong>Joining BT Express as staff?</strong>
+            <p class="muted small">Owners can add you directly from the Team page, or you can request access yourself below — an Owner just needs to approve it before you can log in.</p>
+            <button type="button" class="auth-forgot-link" id="showStaffRequestBtn" style="margin-top:2px">Request operator staff access →</button>
+
+            <form id="staffRequestForm" class="form-grid" hidden style="margin-top:12px">
+              <div class="field-v"><label for="srName">Full name</label><input type="text" id="srName" placeholder="Jane Perera" required /></div>
+              <div class="field-v"><label for="srPhone">Phone</label><input type="tel" id="srPhone" placeholder="07X XXX XXXX" required /></div>
+              <div class="field-v"><label for="srEmail">Email</label><input type="email" id="srEmail" placeholder="you@btexpress.lk" required /></div>
+              <div class="field-v"><label for="srPass">Choose a password</label><input type="password" id="srPass" placeholder="You'll use this once approved" required /></div>
+              <div class="error" id="staffRequestError" style="color:var(--danger);font-size:13px"></div>
+              <button class="btn block" type="submit">Send request</button>
+            </form>
+            <div class="auth-demo-note" id="staffRequestResult" hidden></div>
+
+            <p class="small" style="margin-top:10px">📧 support.buspal@lk &nbsp;·&nbsp; ☎ +94 75 700 0085</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./shared/js/auth.js"></script>
+<script src="./shared/js/validate.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>
