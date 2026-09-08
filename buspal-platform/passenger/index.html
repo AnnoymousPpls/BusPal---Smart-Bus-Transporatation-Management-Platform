@@ -1,1 +1,179 @@
- 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BusPal — Passenger Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared/css/style.css" />
+<script>
+  // Applied before paint so there's no flash of the wrong theme.
+  (function(){
+    var saved = localStorage.getItem('buspal-theme');
+    var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+<script src="../shared/js/auth.js"></script>
+<script>
+  // Guard: only signed-in passengers may view this page.
+  var __session = AuthStore.requireRole(['passenger'], '../index.html');
+</script>
+</head>
+<body>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="side-top">
+      <div class="brand">
+        <img src="../shared/assets/logo.png" alt="BusPal" class="brand-mark" />
+        <span class="brand-name">BusPal</span>
+      </div>
+      <button class="side-close" id="sideClose" aria-label="Close menu">✕</button>
+    </div>
+
+    <nav class="side-nav" id="sideNav">
+      <button class="nav-item active" data-route="overview">
+        <span class="nav-ico">◈</span><span>Overview</span>
+      </button>
+      <button class="nav-item" data-route="book">
+        <span class="nav-ico">⌕</span><span>Book a Trip</span>
+      </button>
+      <button class="nav-item" data-route="bookings">
+        <span class="nav-ico">▤</span><span>My Bookings</span>
+      </button>
+      <button class="nav-item" data-route="tracking">
+        <span class="nav-ico">◎</span><span>Live Tracking</span>
+      </button>
+      <button class="nav-item" data-route="support">
+        <span class="nav-ico">✆</span><span>Feedback &amp; SOS</span>
+      </button>
+      <button class="nav-item" data-route="profile">
+        <span class="nav-ico">◐</span><span>Profile</span>
+      </button>
+    </nav>
+
+    <div class="side-bottom">
+      <button class="nav-item nav-item-muted" id="logoutBtn">
+        <span class="nav-ico">⏻</span><span>Log out</span>
+      </button>
+    </div>
+  </aside>
+  <div class="side-backdrop" id="sideBackdrop"></div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <header class="topbar">
+      <button class="menu-btn" id="menuBtn" aria-label="Open menu">☰</button>
+      <div class="topbar-title">
+        <h1 id="pageTitle">Overview</h1>
+      </div>
+      <div class="topbar-actions">
+        <div class="ticket-pulse" id="liveIndicator" hidden>
+          <span class="dot"></span> Trip in progress
+        </div>
+        <button class="theme-toggle" id="themeToggle" title="Switch theme" aria-label="Switch theme">
+          <span class="theme-track-icon left">☾</span>
+          <span class="theme-track-icon right">☀</span>
+          <span class="theme-knob" id="themeKnob"></span>
+        </button>
+        <button class="avatar-btn" id="profileShortcut" title="Profile">
+          <span id="avatarInitials">RK</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="content" id="content">
+      <!-- sections injected by app.js -->
+    </main>
+  </div>
+
+  <!-- SEAT SELECTION MODAL -->
+  <div class="modal" id="seatModal" aria-hidden="true">
+    <div class="sheet">
+      <header>
+        <div>
+          <div class="title" id="seatModalTitle">Select seats</div>
+          <div class="muted small" id="seatModalSub"></div>
+        </div>
+        <button class="btn ghost" id="seatModalClose">Close</button>
+      </header>
+      <div class="body" id="seatModalBody"></div>
+    </div>
+  </div>
+
+  <!-- BOARDING PASS MODAL -->
+  <div class="modal" id="passModal" aria-hidden="true">
+    <div class="sheet sheet-narrow">
+      <header>
+        <div class="title">Your e-ticket</div>
+        <button class="btn ghost" id="passModalClose">Close</button>
+      </header>
+      <div class="body" id="passModalBody"></div>
+    </div>
+  </div>
+
+  <!-- SOS MODAL -->
+  <div class="modal" id="sosModal" aria-hidden="true">
+    <div class="sheet sheet-narrow sos-sheet">
+      <header>
+        <div class="title">Emergency SOS</div>
+        <button class="btn ghost" id="sosModalClose">Close</button>
+      </header>
+      <div class="body" id="sosModalBody"></div>
+    </div>
+  </div>
+
+  <!-- FLOATING SOS (persistent, right side) -->
+  <button class="sos-fab" id="sosPill" aria-label="Emergency SOS">
+    <span class="sos-fab-petal p1"></span>
+    <span class="sos-fab-petal p2"></span>
+    <span class="sos-fab-petal p3"></span>
+    <span class="sos-fab-petal p4"></span>
+    <span class="sos-fab-petal p5"></span>
+    <span class="sos-fab-petal p6"></span>
+    <span class="sos-fab-core">SOS</span>
+  </button>
+
+  <!-- GENERIC FORM MODAL (edit feedback, etc.) -->
+  <div class="modal" id="formModal" aria-hidden="true">
+    <div class="sheet">
+      <header>
+        <div class="title" id="formModalTitle">Edit</div>
+        <button class="btn ghost" id="formModalClose">Close</button>
+      </header>
+      <div class="body" id="formModalBody"></div>
+    </div>
+  </div>
+
+  <!-- CONFIRM MODAL -->
+  <div class="modal" id="confirmModal" aria-hidden="true">
+    <div class="sheet sheet-narrow">
+      <header>
+        <div class="title">Are you sure?</div>
+        <button class="btn ghost" id="confirmModalClose">Close</button>
+      </header>
+      <div class="body" id="confirmModalBody"></div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="../shared/js/store.js"></script>
+  <script src="../shared/js/imageUtils.js"></script>
+  <script src="../shared/js/seatLayout.js"></script>
+  <script src="../shared/js/validate.js"></script>
+  <script src="./js/data.js"></script>
+  <script src="./js/core.js"></script>
+  <script src="./js/overview.js"></script>
+  <script src="./js/book.js"></script>
+  <script src="./js/bookings.js"></script>
+  <script src="./js/tracking.js"></script>
+  <script src="./js/support.js"></script>
+  <script src="./js/profile.js"></script>
+  <script src="./js/boot.js"></script>
+</body>
+</html>
