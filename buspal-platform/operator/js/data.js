@@ -1,307 +1,1567 @@
-/* BusPal — Operator Dashboard
-   Mock data + CRUD API layer. Every function returns a Promise —
-   swap the bodies for real fetch() calls to the Spring Boot API
-   later; nothing in app.js needs to change.*/
+/* ============================================================
+   BusPal — Operator Dashboard
+   Real PHP + MySQL API layer.
+
+   Keeps the existing OpsAPI function names so the existing
+   operator pages do not need unnecessary rewrites.
+   ============================================================ */
 
 const OpsAPI = (() => {
+  const API_BASE = "http://localhost/buspal-backend-php/api";
 
-  const delay = (v, ms = 220) => new Promise((res) => setTimeout(() => res(v), ms));
-  const uid = (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+  async function request(endpoint, options = {}) {
+    const headers = {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    };
 
-  // OPERATOR PROFILE 
-  const OPERATOR = {
-    name: "L. Prathap",
-    company: "BT Express (Pvt) Ltd",
-    email: "ops@btexpress.lk",
-    phone: "077 010 1107",
-    initials: "LP",
+    const token = AuthStore.getToken();
+
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    let response;
+
+    try {
+      response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers,
+      });
+    } catch (error) {
+      console.error("OpsAPI connection error:", error);
+      throw new Error(
+        "Unable to connect to the BusPal server. Make sure WAMP and Apache are running."
+      );
+    }
+
+    let body = null;
+
+    try {
+      body = await response.json();
+    } catch {
+      throw new Error(
+        `Server returned an invalid response (HTTP ${response.status}).`
+      );
+    }
+
+    if (!response.ok || body?.success === false) {
+      throw new Error(
+        body?.message ||
+        body?.error ||
+        `Request failed with status ${response.status}.`
+      );
+    }
+
+    return body?.data ?? body;
+  }
+
+  function post(endpoint, payload) {
+    return request(endpoint, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+ function patchRequest(endpoint, payload) {
+  return request(endpoint, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+async function uploadStaffPhoto(staffId, file) {
+  const formData = new FormData();
+
+  formData.append(
+    "staffId",
+    String(staffId)
+  );
+
+  formData.append(
+    "photo",
+    file
+  );
+
+  const headers = {};
+
+  const token = AuthStore.getToken();
+
+  if (token) {
+    headers.Authorization =
+      `Bearer ${token}`;
+  }
+
+  let response;
+
+  try {
+    response = await fetch(
+      `${API_BASE}/staff/photos.php`,
+      {
+        method: "POST",
+        headers,
+        body: formData,
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Staff photo upload error:",
+      error
+    );
+
+    throw new Error(
+      "Unable to upload the staff photo."
+    );
+  }
+
+  let body;
+
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error(
+      `Server returned an invalid response (HTTP ${response.status}).`
+    );
+  }
+
+  if (
+    !response.ok ||
+    body?.success === false
+  ) {
+    throw new Error(
+      body?.message ||
+      body?.error ||
+      `Photo upload failed (HTTP ${response.status}).`
+    );
+  }
+
+  return body?.data ?? body;
+}
+  function remove(endpoint) {
+    return request(endpoint, {
+      method: "DELETE",
+    });
+  }
+
+  function normaliseId(value) {
+    return value == null || value === ""
+      ? null
+      : Number(value);
+  }
+
+  function normaliseBus(bus) {
+    return {
+      ...bus,
+      id: normaliseId(bus.id),
+      capacity: Number(bus.capacity || 0),
+      odometer: Number(bus.odometer || 0),
+      maintenanceIntervalKm: Number(
+        bus.maintenanceIntervalKm ||
+        bus.maintenance_interval_km ||
+        10000
+      ),
+      photos: Array.isArray(bus.photos)
+        ? bus.photos.map(photo => {
+            if (typeof photo === "string") {
+              return {
+                id: null,
+                path: photo,
+              };
+            }
+
+            return {
+              id: normaliseId(photo.id),
+              path: photo.path || "",
+            };
+          })
+        : [],
+    };
+  }
+
+  function normaliseStaff(staff) {
+  return {
+    ...staff,
+
+    // Always use numeric IDs in the frontend.
+    id: normaliseId(staff.id),
+
+    // Explicit frontend field names.
+    name: staff.name ?? "",
+    role: staff.role ?? "",
+    phone: staff.phone ?? "",
+
+    // PHP/MySQL may return either camelCase or snake_case.
+    ntcLicense:
+      staff.ntcLicense ??
+      staff.ntc_license ??
+      "",
+
+    drivingLicense:
+      staff.drivingLicense ??
+      staff.driving_license ??
+      "",
+
+    licenseExpiry:
+      staff.licenseExpiry ??
+      staff.license_expiry ??
+      "",
+
+    photo: (() => {
+  const path =
+    staff.photo ??
+    staff.photo_path ??
+    null;
+
+  if (!path) {
+    return null;
+  }
+
+  if (
+    path.startsWith("http://") ||
+    path.startsWith("https://")
+  ) {
+    return path;
+  }
+
+  return `${API_BASE.replace("/api", "")}/${String(path).replace(/^\/+/, "")}`;
+})(),
+
+    photoVisible: Boolean(
+      staff.photoVisible ??
+      staff.photo_visible ??
+      true
+    ),
+
+    status: staff.status ?? "active",
   };
+}
+  function normaliseRoute(route) {
+  return {
+    ...route,
 
-  // BUSES 
-  let BUSES = [
-    { id: "BUS-01", plate: "NC-9302", model: "Magnate", type: "AC Luxury", capacity: 37, fuelType: "Diesel", odometer: 84210, status: "active", maintenanceIntervalKm: 10000, lastServiceOdometer: 75000 },
-    { id: "BUS-02", plate: "BT-2214", model: "Zhongtong LCK6128H", type: "AC Luxury", capacity: 51, fuelType: "Diesel", odometer: 61340, status: "active", maintenanceIntervalKm: 10000, lastServiceOdometer: 55000 },
-    { id: "BUS-03", plate: "BT-1187", model: "Ashok Leyland", type: "Semi-Luxury", capacity: 49, fuelType: "Diesel", odometer: 102870, status: "maintenance", maintenanceIntervalKm: 10000, lastServiceOdometer: 90000 },
-    { id: "BUS-04", plate: "BT-4021", model: "Higer Sleeper", type: "AC Sleeper", capacity: 37, fuelType: "Diesel", odometer: 45010, status: "active", maintenanceIntervalKm: 15000, lastServiceOdometer: 40000 },
-  ];
+    id: normaliseId(route.id),
 
-  // STAFF (drivers & conductors)
-  let STAFF = [
-    {
-      id: "STF-01", name: "M. Fernando", role: "driver", phone: "071 234 5678",
-      ntcLicense: "NTC-DRV-88231", drivingLicense: "B1204552", licenseExpiry: "2027-04-12",
-      photo: null, photoVisible: true, status: "active",
-    },
-    {
-      id: "STF-02", name: "S. Perera", role: "conductor", phone: "070 987 6543",
-      ntcLicense: "NTC-CND-44120", drivingLicense: "", licenseExpiry: "",
-      photo: null, photoVisible: true, status: "active",
-    },
-    {
-      id: "STF-03", name: "K. Jayasuriya", role: "driver", phone: "077 555 2211",
-      ntcLicense: "NTC-DRV-91002", drivingLicense: "B0987541", licenseExpiry: "2026-11-30",
-      photo: null, photoVisible: false, status: "active",
-    },
-    {
-      id: "STF-04", name: "R. Wickrama", role: "conductor", phone: "076 112 4499",
-      ntcLicense: "NTC-CND-77841", drivingLicense: "", licenseExpiry: "",
-      photo: null, photoVisible: true, status: "on-leave",
-    },
-  ];
+    from: route.from ?? route.from_city ?? "",
+    to: route.to ?? route.to_city ?? "",
 
-  // ROUTES (with departures) 
-  let ROUTES = [
-    {
-      id: "RT-01", from: "Colombo", to: "Kandy", distanceKm: 115, fare: 1250,
-      visible: true,
-      departures: [
-        { id: "DEP-01", time: "06:30", busId: "BUS-01", driverId: "STF-01", conductorId: "STF-02" },
-        { id: "DEP-02", time: "08:00", busId: "BUS-03", driverId: "STF-03", conductorId: "STF-04" },
-      ],
-    },
-    {
-      id: "RT-02", from: "Colombo", to: "Galle", distanceKm: 128, fare: 1100,
-      visible: true,
-      departures: [
-        { id: "DEP-03", time: "07:15", busId: "BUS-02", driverId: "", conductorId: "" },
-      ],
-    },
-    {
-      id: "RT-03", from: "Kandy", to: "Jaffna", distanceKm: 265, fare: 2400,
-      visible: false,
-      departures: [
-        { id: "DEP-04", time: "20:00", busId: "BUS-04", driverId: "", conductorId: "" },
-      ],
-    },
-  ];
+    distanceKm: Number(
+      route.distanceKm ??
+      route.distance_km ??
+      0
+    ),
 
-  // FUEL LOG 
-  let FUEL_LOG = [
-    { id: "FL-01", busId: "BUS-01", date: "2026-07-29", liters: 120, cost: 43200, odometer: 84210, station: "Ceypetco - Nittambuwa" },
-    { id: "FL-02", busId: "BUS-02", date: "2026-07-27", liters: 95, cost: 34200, odometer: 61340, station: "Lanka IOC - Kadawatha" },
-    { id: "FL-03", busId: "BUS-01", date: "2026-07-20", liters: 110, cost: 39600, odometer: 83010, station: "Ceypetco - Kegalle" },
-    { id: "FL-04", busId: "BUS-04", date: "2026-07-18", liters: 140, cost: 50400, odometer: 45010, station: "Ceypetco - Anuradhapura" },
-  ];
+    fare: Number(route.fare || 0),
 
-  let MAINTENANCE_LOG = [
-    { id: "MT-01", busId: "BUS-01", date: "2026-06-15", odometer: 75000, note: "Full service — oil, filters, brakes" },
-    { id: "MT-02", busId: "BUS-03", date: "2026-05-20", odometer: 90000, note: "Full service — oil, filters, brakes" },
-    { id: "MT-03", busId: "BUS-02", date: "2026-06-28", odometer: 55000, note: "Routine service" },
-    { id: "MT-04", busId: "BUS-04", date: "2026-06-10", odometer: 40000, note: "Routine service" },
-  ];
+    visible: Boolean(route.visible),
 
-  // FEEDBACK and SOS_ALERTS now live in the shared BusPalStore (shared/js/store.js)
-  // so the operator side sees what passengers actually submit/trigger, instead of
-  // its own disconnected mock copy.
+    departures: Array.isArray(route.departures)
+      ? route.departures.map(dep => ({
+          ...dep,
 
-  function busLabel(b) { return b ? `${b.plate} · ${b.model}` : "Unassigned"; }
+          id: normaliseId(dep.id),
 
-  /** Highest odometer reading across a bus's maintenance log, falling back to its baseline lastServiceOdometer if no entries exist yet. */
-  function computeLastService(bus) {
-    const entries = MAINTENANCE_LOG.filter(m => m.busId === bus.id);
-    if (!entries.length) return bus.lastServiceOdometer ?? 0;
-    return Math.max(bus.lastServiceOdometer ?? 0, ...entries.map(e => e.odometer));
+          busId: normaliseId(
+            dep.busId ?? dep.bus_id
+          ),
+
+          driverId: normaliseId(
+            dep.driverId ?? dep.driver_id
+          ),
+
+          conductorId: normaliseId(
+            dep.conductorId ?? dep.conductor_id
+          ),
+
+          time: dep.time
+            ? String(dep.time).slice(0, 5)
+            : "",
+        }))
+      : [],
+  };
+}
+
+  function normaliseFuel(entry) {
+    return {
+      ...entry,
+      id: normaliseId(entry.id),
+      busId: normaliseId(entry.busId),
+      liters: Number(entry.liters || 0),
+      cost: Number(entry.cost || 0),
+      odometer: Number(entry.odometer || 0),
+    };
+  }
+
+  function normaliseMaintenance(entry) {
+    return {
+      ...entry,
+      id: normaliseId(entry.id),
+      busId: normaliseId(entry.busId),
+      odometer: Number(entry.odometer || 0),
+    };
+  }
+
+  function normaliseBooking(booking) {
+    return {
+      ...booking,
+      id: normaliseId(booking.id),
+      price: Number(booking.price || 0),
+      seats: Array.isArray(booking.seats)
+        ? booking.seats.map(String)
+        : [],
+    };
+  }
+
+  function normaliseLiveTrip(trip) {
+    return {
+      ...trip,
+      id: normaliseId(trip.id),
+      etaMinutes: Number(trip.etaMinutes || 0),
+      currentStopIndex: Number(
+        trip.currentStopIndex || 0
+      ),
+      stops: Array.isArray(trip.stops)
+        ? trip.stops
+        : [],
+    };
+  }
+
+  function formatBusLabel(bus) {
+    return bus
+      ? `${bus.plate} · ${bus.model}`
+      : "Unassigned";
+  }
+
+  async function getBusesInternal() {
+    const data = await request("/buses/index.php");
+
+    return Array.isArray(data)
+      ? data.map(normaliseBus)
+      : [];
+  }
+
+  async function getStaffInternal() {
+    const data = await request("/staff/index.php");
+
+    return Array.isArray(data)
+      ? data.map(normaliseStaff)
+      : [];
+  }
+
+  async function getRoutesInternal() {
+    const data = await request("/routes/index.php");
+
+    return Array.isArray(data)
+      ? data.map(normaliseRoute)
+      : [];
   }
 
   return {
-    // profile 
-    getOperator: () => delay({ ...OPERATOR }),
 
-    // overview 
-    getOverviewStats: () => delay({
-      buses: BUSES.length,
-      activeBuses: BUSES.filter(b => b.status === "active").length,
-      routes: ROUTES.length,
-      visibleRoutes: ROUTES.filter(r => r.visible).length,
-      staff: STAFF.length,
-      openFeedback: BusPalStore.getFeedback().filter(f => f.status === "open").length,
-      openSOS: BusPalStore.getSOSAlerts().filter(s => s.status !== "resolved").length,
-      fuelSpendMonth: FUEL_LOG.reduce((s, f) => s + f.cost, 0),
-    }),
+    // ==========================================================
+    // OPERATOR PROFILE
+    // ==========================================================
 
-    // ---- buses CRUD ----
-    getBuses: () => delay(BUSES.map(b => ({ ...b }))),
-    createBus: (data) => { const bus = { id: uid("BUS"), status: "active", ...data }; BUSES = [bus, ...BUSES]; return delay(bus); },
-    updateBus: (id, patch) => { BUSES = BUSES.map(b => b.id === id ? { ...b, ...patch } : b); return delay(BUSES.find(b => b.id === id)); },
-    deleteBus: (id) => { BUSES = BUSES.filter(b => b.id !== id); return delay({ id }); },
-    toggleBusStatus: (id) => {
-      BUSES = BUSES.map(b => b.id === id ? { ...b, status: b.status === "active" ? "maintenance" : "active" } : b);
-      return delay(BUSES.find(b => b.id === id));
+   getOperator: async () => {
+  const session = AuthStore.getSession();
+
+  let team = [];
+
+  try {
+    const data = await request("/auth/team.php");
+    team = Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("Unable to load operator account:", error);
+  }
+
+  // Match the logged-in account by email first.
+  const sessionEmail = String(
+    session?.email || ""
+  ).trim().toLowerCase();
+
+  const account = team.find(
+    a =>
+      String(a.email || "")
+        .trim()
+        .toLowerCase() === sessionEmail
+  ) || team.find(
+    a =>
+      Number(a.id) === Number(session?.id)
+  );
+
+  return {
+    id:
+      account?.id ??
+      session?.id ??
+      null,
+
+    name:
+      account?.name ||
+      session?.name ||
+      "Operator",
+
+    company:
+      "BT Express (Pvt) Ltd",
+
+    email:
+      account?.email ||
+      session?.email ||
+      "",
+
+    phone:
+      account?.phone ||
+      session?.phone ||
+      "",
+
+    initials:
+      (
+        account?.name ||
+        session?.name ||
+        "Operator"
+      )
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(part => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+  };
+},
+
+    // ==========================================================
+    // OVERVIEW
+    // ==========================================================
+
+    getOverviewStats: async () => {
+      const [
+        buses,
+        routes,
+        staff,
+        fuelLog,
+        feedback,
+        sos
+      ] = await Promise.all([
+        getBusesInternal(),
+        getRoutesInternal(),
+        getStaffInternal(),
+        request("/fuel/index.php"),
+        request("/feedback/index.php"),
+        request("/sos/index.php"),
+      ]);
+
+      const fuel = Array.isArray(fuelLog)
+        ? fuelLog.map(normaliseFuel)
+        : [];
+
+      const feedbackRows = Array.isArray(feedback)
+        ? feedback
+        : [];
+
+      const sosRows = Array.isArray(sos)
+        ? sos
+        : [];
+
+      const currentMonth = new Date()
+        .toISOString()
+        .slice(0, 7);
+
+      const fuelSpendMonth = fuel
+        .filter(entry =>
+          String(entry.date || "").slice(0, 7) === currentMonth
+        )
+        .reduce(
+          (sum, entry) => sum + Number(entry.cost || 0),
+          0
+        );
+
+      return {
+        buses: buses.length,
+        activeBuses: buses.filter(
+          bus => bus.status === "active"
+        ).length,
+
+        routes: routes.length,
+
+        visibleRoutes: routes.filter(
+          route => route.visible
+        ).length,
+
+        staff: staff.length,
+
+        openFeedback: feedbackRows.filter(
+          item => item.status === "open"
+        ).length,
+
+        openSOS: sosRows.filter(
+          item => item.status !== "resolved"
+        ).length,
+
+        fuelSpendMonth,
+      };
     },
 
-    // ---- staff CRUD ----
-    getStaff: () => delay(STAFF.map(s => ({ ...s }))),
-    createStaff: (data) => { const s = { id: uid("STF"), status: "active", photoVisible: true, photo: null, ...data }; STAFF = [s, ...STAFF]; return delay(s); },
-    updateStaff: (id, patch) => { STAFF = STAFF.map(s => s.id === id ? { ...s, ...patch } : s); return delay(STAFF.find(s => s.id === id)); },
-    deleteStaff: (id) => { STAFF = STAFF.filter(s => s.id !== id); return delay({ id }); },
-    togglePhotoVisible: (id) => {
-      STAFF = STAFF.map(s => s.id === id ? { ...s, photoVisible: !s.photoVisible } : s);
-      return delay(STAFF.find(s => s.id === id));
+
+    // ==========================================================
+    // BUSES
+    // ==========================================================
+
+    getBuses: async () => {
+      return getBusesInternal();
     },
 
-    // ---- routes CRUD ----
-    getRoutes: () => delay(ROUTES.map(r => ({
-      ...r,
-      departures: r.departures.map(d => ({
-        ...d,
-        busLabel: busLabel(BUSES.find(b => b.id === d.busId)),
-        driverName: STAFF.find(s => s.id === d.driverId)?.name || "",
-        conductorName: STAFF.find(s => s.id === d.conductorId)?.name || "",
-      })),
-    }))),
-    createRoute: (data) => { const r = { id: uid("RT"), visible: true, departures: [], ...data }; ROUTES = [r, ...ROUTES]; return delay(r); },
-    updateRoute: (id, patch) => { ROUTES = ROUTES.map(r => r.id === id ? { ...r, ...patch } : r); return delay(ROUTES.find(r => r.id === id)); },
-    deleteRoute: (id) => { ROUTES = ROUTES.filter(r => r.id !== id); return delay({ id }); },
-    toggleRouteVisible: (id) => {
-      ROUTES = ROUTES.map(r => r.id === id ? { ...r, visible: !r.visible } : r);
-      return delay(ROUTES.find(r => r.id === id));
+    createBus: async data => {
+      const result = await post(
+        "/buses/index.php",
+        data
+      );
+
+      return {
+        ...data,
+        id: normaliseId(result?.id),
+        status: data.status || "active",
+        capacity: Number(data.capacity || 0),
+        odometer: Number(data.odometer || 0),
+        maintenanceIntervalKm:
+          Number(data.maintenanceIntervalKm || 10000),
+        photos: [],
+      };
     },
 
-    // ---- departures (schedule + assignment) ----
-    addDeparture: (routeId, data) => {
-      const dep = { id: uid("DEP"), busId: "", driverId: "", conductorId: "", ...data };
-      ROUTES = ROUTES.map(r => r.id === routeId ? { ...r, departures: [...r.departures, dep] } : r);
-      return delay(dep);
-    },
-    updateDeparture: (routeId, depId, patch) => {
-      ROUTES = ROUTES.map(r => r.id !== routeId ? r : {
-        ...r, departures: r.departures.map(d => d.id === depId ? { ...d, ...patch } : d),
-      });
-      return delay(ROUTES.find(r => r.id === routeId).departures.find(d => d.id === depId));
-    },
-    deleteDeparture: (routeId, depId) => {
-      ROUTES = ROUTES.map(r => r.id !== routeId ? r : { ...r, departures: r.departures.filter(d => d.id !== depId) });
-      return delay({ depId });
+    updateBus: async (id, patch) => {
+      const result = await patchRequest(
+        "/buses/index.php",
+        {
+          id: Number(id),
+          ...patch,
+        }
+      );
+
+      return {
+        id: Number(result?.id ?? id),
+        ...patch,
+      };
     },
 
-    // ---- fuel management ----
-    getFuelLog: () => delay(FUEL_LOG.map(f => ({ ...f, bus: BUSES.find(b => b.id === f.busId) }))
-      .sort((a, b) => b.date.localeCompare(a.date))),
-    addFuelEntry: (data) => {
-      const entry = { id: uid("FL"), ...data };
-      FUEL_LOG = [entry, ...FUEL_LOG];
-      if (data.busId && data.odometer) {
-        BUSES = BUSES.map(b => b.id === data.busId ? { ...b, odometer: Math.max(b.odometer, Number(data.odometer)) } : b);
+    deleteBus: async id => {
+      return remove(
+        `/buses/index.php?id=${encodeURIComponent(id)}`
+      );
+    },
+
+    toggleBusStatus: async id => {
+      const buses = await getBusesInternal();
+
+      const bus = buses.find(
+        item => Number(item.id) === Number(id)
+      );
+
+      if (!bus) {
+        throw new Error("Bus not found.");
       }
-      return delay(entry);
+
+      const nextStatus =
+        bus.status === "active"
+          ? "maintenance"
+          : "active";
+
+      return OpsAPI.updateBus(
+        id,
+        { status: nextStatus }
+      );
     },
-    updateFuelEntry: (id, data) => {
-      FUEL_LOG = FUEL_LOG.map(f => f.id === id ? { ...f, ...data } : f);
-      const updated = FUEL_LOG.find(f => f.id === id);
-      if (updated.busId && updated.odometer) {
-        BUSES = BUSES.map(b => b.id === updated.busId ? { ...b, odometer: Math.max(b.odometer, Number(updated.odometer)) } : b);
+
+
+    // ==========================================================
+    // STAFF
+    // ==========================================================
+
+    getStaff: async () => {
+      return getStaffInternal();
+    },
+
+    createStaff: async data => {
+      const result = await post(
+        "/staff/index.php",
+        data
+      );
+
+      return {
+        ...data,
+        id: normaliseId(result?.id),
+        status: data.status || "active",
+        photoVisible:
+          data.photoVisible !== false,
+        photo: null,
+      };
+    },
+
+    updateStaff: async (id, patch) => {
+      const result = await patchRequest(
+        "/staff/index.php",
+        {
+          id: Number(id),
+          ...patch,
+        }
+      );
+
+      return {
+        id: Number(result?.id ?? id),
+        ...patch,
+      };
+    },
+    uploadStaffPhoto: async (staffId, file) => {
+  return uploadStaffPhoto(
+    Number(staffId),
+    file
+  );
+},
+deleteStaffPhoto: async (staffId) => {
+  return remove(
+    `/staff/photos.php?staffId=${encodeURIComponent(staffId)}`
+  );
+},
+    deleteStaff: async id => {
+      return remove(
+        `/staff/index.php?id=${encodeURIComponent(id)}`
+      );
+    },
+
+    togglePhotoVisible: async id => {
+      const staff = await getStaffInternal();
+
+      const person = staff.find(
+        item => Number(item.id) === Number(id)
+      );
+
+      if (!person) {
+        throw new Error("Staff member not found.");
       }
-      return delay(updated);
-    },
-    deleteFuelEntry: (id) => { FUEL_LOG = FUEL_LOG.filter(f => f.id !== id); return delay({ id }); },
 
-    // ---- maintenance (km-based service due tracking) ----
-    // Last-service odometer is derived from the maintenance log itself (the
-    // highest logged odometer reading for that bus), not a separate field —
-    // so editing or deleting a log entry correctly updates the status below,
-    // instead of a stale bus.lastServiceOdometer drifting out of sync.
-    getMaintenanceStatus: () => delay(BUSES.map(b => {
-      const interval = b.maintenanceIntervalKm || 10000;
-      const lastService = computeLastService(b);
-      const kmSinceService = b.odometer - lastService;
-      const kmUntilDue = interval - kmSinceService;
-      let level = "ok";
-      if (kmUntilDue <= 0) level = "overdue";
-      else if (kmUntilDue <= 1000) level = "due-soon";
-      return { ...b, interval, lastService, kmSinceService, kmUntilDue, level };
-    })),
-    updateMaintenanceInterval: (busId, intervalKm) => {
-      BUSES = BUSES.map(b => b.id === busId ? { ...b, maintenanceIntervalKm: Number(intervalKm) || 10000 } : b);
-      return delay(BUSES.find(b => b.id === busId));
-    },
-    getMaintenanceLog: (busId) => delay(
-      MAINTENANCE_LOG.filter(m => !busId || m.busId === busId)
-        .map(m => ({ ...m, bus: BUSES.find(b => b.id === m.busId) }))
-        .sort((a, b) => b.date.localeCompare(a.date))
-    ),
-    addMaintenanceEntry: ({ busId, date, odometer, note }) => {
-      const entry = { id: uid("MT"), busId, date: date || new Date().toISOString().slice(0, 10), odometer: Number(odometer) || 0, note: note || "Service logged" };
-      MAINTENANCE_LOG = [entry, ...MAINTENANCE_LOG];
-      return delay(entry);
-    },
-    updateMaintenanceEntry: (id, patch) => {
-      MAINTENANCE_LOG = MAINTENANCE_LOG.map(m => m.id === id ? { ...m, ...patch, odometer: patch.odometer !== undefined ? Number(patch.odometer) || 0 : m.odometer } : m);
-      return delay(MAINTENANCE_LOG.find(m => m.id === id));
-    },
-    deleteMaintenanceEntry: (id) => {
-      MAINTENANCE_LOG = MAINTENANCE_LOG.filter(m => m.id !== id);
-      return delay({ id });
+      return OpsAPI.updateStaff(
+        id,
+        {
+          photoVisible: !person.photoVisible
+        }
+      );
     },
 
-    // ---- send to / return from maintenance (ties bus status to the service log) ----
-    sendToMaintenance: (busId, note) => {
-      BUSES = BUSES.map(b => b.id === busId ? { ...b, status: "maintenance" } : b);
-      const entry = { id: uid("MT"), busId, date: new Date().toISOString().slice(0, 10), odometer: BUSES.find(b => b.id === busId).odometer, note: note || "Sent for maintenance", type: "sent" };
-      MAINTENANCE_LOG = [entry, ...MAINTENANCE_LOG];
-      return delay(BUSES.find(b => b.id === busId));
-    },
-    returnToService: (busId, { date, odometer, note }) => {
-      BUSES = BUSES.map(b => b.id === busId ? { ...b, status: "active" } : b);
-      const entry = { id: uid("MT"), busId, date: date || new Date().toISOString().slice(0, 10), odometer: Number(odometer) || 0, note: note || "Returned to service", type: "returned" };
-      MAINTENANCE_LOG = [entry, ...MAINTENANCE_LOG];
-      return delay(BUSES.find(b => b.id === busId));
+
+    // ==========================================================
+    // ROUTES
+    // ==========================================================
+
+    getRoutes: async () => {
+      return getRoutesInternal();
     },
 
-    // ---- feedback / complaints / SOS ----
-    getFeedback: () => delay(BusPalStore.getFeedback()),
-    resolveFeedback: (id) => delay(BusPalStore.resolveFeedback(id)),
-    deleteFeedback: (id) => delay(BusPalStore.deleteFeedback(id)),
-    getSOSAlerts: () => delay(BusPalStore.getSOSAlerts()),
-    resolveSOS: (id) => delay(BusPalStore.resolveSOS(id)),
-    deleteSOS: (id) => delay(BusPalStore.deleteSOS(id)),
+    createRoute: async data => {
+      const result = await post(
+        "/routes/index.php",
+        data
+      );
 
-    // ---- conductor: seat manifest + counter booking for a specific trip instance ----
-    // Trip instance = a Departure (route+time) pinned to a date, matched by value
-    // against the shared booking store (see shared/js/store.js for why).
-    getConductorTrips: () => delay(
-      ROUTES.flatMap(r => r.departures.map(d => ({
-        routeId: r.id, depId: d.id, from: r.from, to: r.to, time: d.time,
-        busLabel: busLabel(BUSES.find(b => b.id === d.busId)),
-        capacity: BUSES.find(b => b.id === d.busId)?.capacity || 40,
-        driverName: STAFF.find(s => s.id === d.driverId)?.name || "",
-        conductorName: STAFF.find(s => s.id === d.conductorId)?.name || "",
-      })))
-    ),
-    getManifest: (from, to, date, depTime, capacity) => {
-      const manifest = BusPalStore.getManifest(from, to, date, depTime);
-      const takenSeats = manifest.flatMap(b => b.seats);
-      return delay({ manifest, takenSeats, capacity: capacity || 40 });
+      return {
+        ...data,
+        id: normaliseId(result?.id),
+        visible:
+          data.visible !== false,
+        departures: [],
+      };
     },
-    counterBooking: ({ from, to, date, depTime, arrTime, plate, busType, price, pickupPoint, passengerName, phone, seats }) =>
-      delay(BusPalStore.createBooking({
-        passengerId: null, passengerName, phone,
-        from, to, date, depTime, arrTime: arrTime || "", plate: plate || "", busType: busType || "",
-        price: price || 0, pickupPoint: pickupPoint || from, seats, source: "counter",
-      })),
 
-    // ---- global bookings view (all passengers, all trips — for the operator's Bookings page) ----
-    getAllBookings: () => delay(BusPalStore.getAllBookings().sort((a, b) => b.bookedAt.localeCompare(a.bookedAt))),
-    cancelAnyBooking: (id) => delay(BusPalStore.cancelBooking(id)),
-    deleteBooking: (id) => delay(BusPalStore.deleteBooking(id)),
+    updateRoute: async (id, patch) => {
+      const result = await patchRequest(
+        "/routes/index.php",
+        {
+          id: Number(id),
+          ...patch,
+        }
+      );
 
-    // ---- conductor trip-code access (no separate login — see shared/js/store.js) ----
-    getTripCode: (from, to, date, depTime, meta) => delay(BusPalStore.getOrCreateTripCode(from, to, date, depTime, meta)),
+      return {
+        id: Number(result?.id ?? id),
+        ...patch,
+      };
+    },
 
-    // ---- live tracking (full CRUD — start/advance/end a trip's tracking session) ----
-    getTrackableTrips: () => delay(
-      ROUTES.flatMap(r => r.departures.map(d => ({
-        routeId: r.id, depId: d.id, from: r.from, to: r.to, time: d.time,
-        busPlate: BUSES.find(b => b.id === d.busId)?.plate || "TBA",
-        driverName: STAFF.find(s => s.id === d.driverId)?.name || "",
-        conductorName: STAFF.find(s => s.id === d.conductorId)?.name || "",
-      })))
-    ),
-    getLiveTrips: () => delay(BusPalStore.getLiveTrips()),
-    startLiveTrip: (data) => delay(BusPalStore.startLiveTrip(data)),
-    updateLiveTrip: (id, patch) => delay(BusPalStore.updateLiveTrip(id, patch)),
-    toggleLiveTripVisibility: (id) => delay(BusPalStore.toggleLiveTripVisibility(id)),
-    advanceLiveTrip: (id) => delay(BusPalStore.advanceLiveTrip(id)),
-    endLiveTrip: (id) => delay(BusPalStore.endLiveTrip(id)),
-    deleteLiveTrip: (id) => delay(BusPalStore.deleteLiveTrip(id)),
+    deleteRoute: async id => {
+      return remove(
+        `/routes/index.php?id=${encodeURIComponent(id)}`
+      );
+    },
+
+    toggleRouteVisible: async id => {
+      const result = await patchRequest(
+        "/routes/index.php",
+        {
+          id: Number(id),
+          action: "toggle-visible",
+        }
+      );
+
+      return result;
+    },
+
+
+    // ==========================================================
+    // DEPARTURES
+    // ==========================================================
+
+    addDeparture: async (routeId, data) => {
+      const result = await post(
+        "/routes/departures.php",
+        {
+          routeId: Number(routeId),
+          time: data.time,
+        }
+      );
+
+      return {
+        ...data,
+        id: normaliseId(result?.id),
+        busId: null,
+        driverId: null,
+        conductorId: null,
+      };
+    },
+
+    updateDeparture: async (
+      routeId,
+      depId,
+      patchData
+    ) => {
+      const result = await patchRequest(
+        "/routes/departures.php",
+        {
+          id: Number(depId),
+          ...patchData,
+          busId:
+            patchData.busId === ""
+              ? null
+              : patchData.busId,
+          driverId:
+            patchData.driverId === ""
+              ? null
+              : patchData.driverId,
+          conductorId:
+            patchData.conductorId === ""
+              ? null
+              : patchData.conductorId,
+        }
+      );
+
+      return {
+        id: Number(result?.id ?? depId),
+        ...patchData,
+      };
+    },
+
+    deleteDeparture: async (
+      routeId,
+      depId
+    ) => {
+      return remove(
+        `/routes/departures.php?id=${encodeURIComponent(depId)}`
+      );
+    },
+
+
+    // ==========================================================
+    // FUEL
+    // ==========================================================
+
+    getFuelLog: async () => {
+      const data = await request(
+        "/fuel/index.php"
+      );
+
+      return Array.isArray(data)
+        ? data
+            .map(normaliseFuel)
+            .sort(
+              (a, b) =>
+                String(b.date).localeCompare(
+                  String(a.date)
+                )
+            )
+        : [];
+    },
+
+    addFuelEntry: async data => {
+      const result = await post(
+        "/fuel/index.php",
+        data
+      );
+
+      return {
+        ...data,
+        id: normaliseId(result?.id),
+      };
+    },
+
+    updateFuelEntry: async (
+      id,
+      data
+    ) => {
+      const result = await patchRequest(
+        "/fuel/index.php",
+        {
+          id: Number(id),
+          ...data,
+        }
+      );
+
+      return {
+        id: Number(result?.id ?? id),
+        ...data,
+      };
+    },
+
+    deleteFuelEntry: async id => {
+      return remove(
+        `/fuel/index.php?id=${encodeURIComponent(id)}`
+      );
+    },
+
+
+    // ==========================================================
+    // MAINTENANCE
+    // ==========================================================
+
+    getMaintenanceStatus: async () => {
+      const data = await request(
+        "/maintenance/index.php?action=status"
+      );
+
+      return Array.isArray(data)
+        ? data
+        : [];
+    },
+
+    updateMaintenanceInterval: async (
+      busId,
+      intervalKm
+    ) => {
+      return post(
+        "/maintenance/index.php?action=interval",
+        {
+          busId: Number(busId),
+          intervalKm: Number(intervalKm),
+        }
+      );
+    },
+
+    getMaintenanceLog: async busId => {
+      const endpoint =
+        busId
+          ? `/maintenance/index.php?busId=${encodeURIComponent(busId)}`
+          : "/maintenance/index.php";
+
+      const data = await request(endpoint);
+
+      return Array.isArray(data)
+        ? data.map(normaliseMaintenance)
+        : [];
+    },
+
+    addMaintenanceEntry: async ({
+      busId,
+      date,
+      odometer,
+      note
+    }) => {
+      const result = await post(
+        "/maintenance/index.php",
+        {
+          busId: Number(busId),
+          date,
+          odometer: Number(odometer || 0),
+          note: note || "Service logged",
+        }
+      );
+
+      return {
+        id: normaliseId(result?.id),
+        busId: Number(busId),
+        date,
+        odometer: Number(odometer || 0),
+        note: note || "Service logged",
+      };
+    },
+
+    updateMaintenanceEntry: async (
+      id,
+      patchData
+    ) => {
+      const result = await patchRequest(
+        "/maintenance/index.php",
+        {
+          id: Number(id),
+          ...patchData,
+        }
+      );
+
+      return {
+        id: Number(result?.id ?? id),
+        ...patchData,
+      };
+    },
+
+    deleteMaintenanceEntry: async id => {
+      return remove(
+        `/maintenance/index.php?id=${encodeURIComponent(id)}`
+      );
+    },
+
+    sendToMaintenance: async (
+      busId,
+      note
+    ) => {
+      return post(
+        "/maintenance/index.php?action=send",
+        {
+          busId: Number(busId),
+          note: note || "Sent for maintenance",
+        }
+      );
+    },
+
+    returnToService: async (
+      busId,
+      {
+        date,
+        odometer,
+        note
+      }
+    ) => {
+      return post(
+        "/maintenance/index.php?action=return",
+        {
+          busId: Number(busId),
+          date,
+          odometer: Number(odometer || 0),
+          note: note || "Returned to service",
+        }
+      );
+    },
+
+
+    // ==========================================================
+    // FEEDBACK
+    // ==========================================================
+
+    getFeedback: async () => {
+      const data = await request(
+        "/feedback/index.php"
+      );
+
+      return Array.isArray(data)
+        ? data
+        : [];
+    },
+
+    resolveFeedback: async id => {
+      return patchRequest(
+        "/feedback/index.php",
+        {
+          id: Number(id),
+        }
+      );
+    },
+
+    deleteFeedback: async id => {
+      return remove(
+        `/feedback/index.php?id=${encodeURIComponent(id)}`
+      );
+    },
+
+
+    // ==========================================================
+    // SOS
+    // ==========================================================
+
+    getSOSAlerts: async () => {
+      const data = await request(
+        "/sos/index.php"
+      );
+
+      return Array.isArray(data)
+        ? data
+        : [];
+    },
+
+    resolveSOS: async id => {
+      return patchRequest(
+        "/sos/index.php",
+        {
+          id: Number(id),
+        }
+      );
+    },
+
+    deleteSOS: async id => {
+      return remove(
+        `/sos/index.php?id=${encodeURIComponent(id)}`
+      );
+    },
+
+
+    // ==========================================================
+    // CONDUCTOR
+    // ==========================================================
+
+    getConductorTrips: async () => {
+      const routes = await getRoutesInternal();
+      const buses = await getBusesInternal();
+      const staff = await getStaffInternal();
+
+      const busMap = new Map(
+        buses.map(bus => [
+          Number(bus.id),
+          bus
+        ])
+      );
+
+      const staffMap = new Map(
+        staff.map(person => [
+          Number(person.id),
+          person
+        ])
+      );
+
+      return routes.flatMap(route =>
+        route.departures.map(departure => {
+          const bus = busMap.get(
+            Number(departure.busId)
+          );
+
+          const driver =
+            staffMap.get(
+              Number(departure.driverId)
+            );
+
+          const conductor =
+            staffMap.get(
+              Number(departure.conductorId)
+            );
+
+          return {
+            routeId: route.id,
+            depId: departure.id,
+            from: route.from,
+            to: route.to,
+            time: departure.time,
+
+            busLabel: formatBusLabel(bus),
+
+            capacity:
+              Number(bus?.capacity || 40),
+
+            driverName:
+              driver?.name || "",
+
+            conductorName:
+              conductor?.name || "",
+          };
+        })
+      );
+    },
+
+    /*
+     * Uses the real trip-code GET endpoint.
+     * The backend does not require conductor authentication
+     * for this lookup.
+     */
+    getManifest: async (
+      from,
+      to,
+      date,
+      depTime,
+      capacity
+    ) => {
+      /*
+       * We need a trip code to access the conductor manifest.
+       * Generate/reuse one through the authenticated operator
+       * endpoint first.
+       */
+      const generated = await post(
+        "/conductor/index.php?action=generate",
+        {
+          from,
+          to,
+          date,
+          depTime,
+          capacity:
+            Number(capacity || 40),
+        }
+      );
+
+      const code = generated?.code;
+
+      if (!code) {
+        throw new Error(
+          "Unable to generate a trip code."
+        );
+      }
+
+      const trip = await request(
+        `/conductor/index.php?code=${encodeURIComponent(code)}`
+      );
+
+      const manifest =
+        Array.isArray(trip?.manifest)
+          ? trip.manifest
+          : [];
+
+      const takenSeats = manifest.flatMap(
+        booking =>
+          Array.isArray(booking.seats)
+            ? booking.seats
+            : []
+      );
+
+      return {
+        ...trip,
+        code,
+        manifest,
+        takenSeats,
+        capacity:
+          Number(trip?.capacity || capacity || 40),
+      };
+    },
+
+    counterBooking: async ({
+      from,
+      to,
+      date,
+      depTime,
+      arrTime,
+      plate,
+      busType,
+      price,
+      pickupPoint,
+      passengerName,
+      phone,
+      seats,
+      code,
+    }) => {
+
+      /*
+       * Use the supplied code if the caller has one.
+       * Otherwise generate/reuse a code for this trip.
+       */
+      let tripCode = code;
+
+      if (!tripCode) {
+        const generated = await post(
+          "/conductor/index.php?action=generate",
+          {
+            from,
+            to,
+            date,
+            depTime,
+            capacity: 40,
+            busLabel: plate || null,
+          }
+        );
+
+        tripCode = generated?.code;
+      }
+
+      if (!tripCode) {
+        throw new Error(
+          "Unable to obtain a trip code."
+        );
+      }
+
+      const result = await post(
+        "/conductor/index.php?action=book",
+        {
+          code: tripCode,
+          passengerName,
+          phone,
+          pickupPoint:
+            pickupPoint || from,
+          seats,
+        }
+      );
+
+      return {
+        ...result,
+        pnr: result?.pnr,
+      };
+    },
+
+
+    // ==========================================================
+    // ADMIN / TEAM MANAGEMENT
+    // ==========================================================
+
+    getTeam: async () => {
+      const data = await request("/auth/team.php");
+
+      return Array.isArray(data)
+        ? data.map(account => ({
+            ...account,
+            id: normaliseId(account.id),
+            role: account.role || "manager",
+            name: account.name || "",
+            email: account.email || "",
+            phone: account.phone || "",
+            status: account.status || "active"
+          }))
+        : [];
+    },
+
+    addTeamMember: async ({
+      name,
+      email,
+      phone,
+      role,
+      password
+    }) => {
+      const result = await post(
+        "/auth/team.php",
+        {
+          name,
+          email,
+          phone: phone || "",
+          role: role || "manager",
+          ...(password ? { password } : {})
+        }
+      );
+
+      return {
+        ...result,
+        id: normaliseId(result?.id)
+      };
+    },
+
+  updateTeamMember: async (id, patchData = {}) => {
+
+  const payload = {
+    id: Number(id)
+  };
+
+  if (patchData.name !== undefined) {
+    payload.name = patchData.name;
+  }
+
+  if (patchData.email !== undefined) {
+    payload.email = patchData.email;
+  }
+
+  if (patchData.phone !== undefined) {
+    payload.phone = patchData.phone;
+  }
+
+  /*
+   * Only send role when the caller actually wants
+   * to change the role.
+   *
+   * This prevents saving the owner's profile from
+   * accidentally sending role = "manager".
+   */
+  if (patchData.role !== undefined) {
+    payload.role = patchData.role;
+  }
+
+  return patchRequest(
+    "/auth/team.php",
+    payload
+  );
+},
+
+    removeTeamMember: async id => {
+      return remove(
+        `/auth/team.php?id=${encodeURIComponent(id)}`
+      );
+    },
+
+    resetTeamMemberPassword: async id => {
+      return post(
+        "/auth/reset-password.php",
+        {
+          id: Number(id)
+        }
+      );
+    },
+
+    getPendingRequests: async () => {
+      const data = await request(
+        "/auth/pending.php"
+      );
+
+      return Array.isArray(data)
+        ? data.map(requestRow => ({
+            ...requestRow,
+            id: normaliseId(requestRow.id),
+            name: requestRow.name || "",
+            email: requestRow.email || "",
+            phone: requestRow.phone || "",
+            role: requestRow.role || "manager"
+          }))
+        : [];
+    },
+
+    approveRequest: async (id, role = "manager") => {
+      return post(
+        "/auth/pending.php",
+        {
+          id: Number(id),
+          action: "approve",
+          role
+        }
+      );
+    },
+
+    rejectRequest: async id => {
+      return post(
+        "/auth/pending.php",
+        {
+          id: Number(id),
+          action: "reject"
+        }
+      );
+    },
+
+    // ==========================================================
+    // ALL BOOKINGS
+    // ==========================================================
+
+    getAllBookings: async () => {
+      const data = await request(
+        "/bookings/index.php?scope=operator"
+      );
+
+      return Array.isArray(data)
+        ? data.map(normaliseBooking)
+        : [];
+    },
+
+    cancelAnyBooking: async id => {
+      return patchRequest(
+        "/bookings/index.php",
+        {
+          id: Number(id),
+        }
+      );
+    },
+
+    deleteBooking: async id => {
+      return remove(
+        `/bookings/index.php?id=${encodeURIComponent(id)}`
+      );
+    },
+
+
+    // ==========================================================
+    // TRIP CODES
+    // ==========================================================
+
+    getTripCode: async (
+      from,
+      to,
+      date,
+      depTime,
+      meta = {}
+    ) => {
+      return post(
+        "/conductor/index.php?action=generate",
+        {
+          from,
+          to,
+          date,
+          depTime,
+
+          capacity:
+            Number(meta.capacity || 40),
+
+          busLabel:
+            meta.busLabel ||
+            null,
+
+          driverName:
+            meta.driverName ||
+            null,
+
+          conductorName:
+            meta.conductorName ||
+            null,
+        }
+      );
+    },
+
+
+    // ==========================================================
+    // LIVE TRACKING
+    // ==========================================================
+
+    getTrackableTrips: async () => {
+  const routes = await getRoutesInternal();
+  const buses = await getBusesInternal();
+  const staff = await getStaffInternal();
+
+  const busMap = new Map(
+    buses.map(bus => [
+      Number(bus.id),
+      bus
+    ])
+  );
+
+  const staffMap = new Map(
+    staff.map(person => [
+      Number(person.id),
+      person
+    ])
+  );
+
+  return routes.flatMap(route => {
+    // PHP uses from_city / to_city.
+    // Frontend normally uses from / to.
+    const from =
+      route.from ??
+      route.from_city ??
+      "";
+
+    const to =
+      route.to ??
+      route.to_city ??
+      "";
+
+    const departures =
+      Array.isArray(route.departures)
+        ? route.departures
+        : [];
+
+    return departures.map(departure => {
+
+      const bus =
+        busMap.get(
+          Number(
+            departure.busId ??
+            departure.bus_id
+          )
+        );
+
+      const driver =
+        staffMap.get(
+          Number(
+            departure.driverId ??
+            departure.driver_id
+          )
+        );
+
+      const conductor =
+        staffMap.get(
+          Number(
+            departure.conductorId ??
+            departure.conductor_id
+          )
+        );
+
+      return {
+        routeId: Number(route.id),
+        depId: Number(departure.id),
+
+        from,
+        to,
+
+        time: departure.time
+          ? String(departure.time).slice(0, 5)
+          : "",
+
+        busPlate:
+          bus?.plate ||
+          "TBA",
+
+        driverName:
+          driver?.name ||
+          "",
+
+        conductorName:
+          conductor?.name ||
+          "",
+      };
+    });
+  });
+},
+    getLiveTrips: async () => {
+      const data = await request(
+        "/tracking/index.php"
+      );
+
+      return Array.isArray(data)
+        ? data.map(normaliseLiveTrip)
+        : [];
+    },
+
+    startLiveTrip: async data => {
+      const result = await post(
+        "/tracking/index.php",
+        data
+      );
+
+      return {
+        id: normaliseId(result?.id),
+        ...data,
+      };
+    },
+
+    updateLiveTrip: async (
+      id,
+      patchData
+    ) => {
+      const result = await patchRequest(
+        "/tracking/index.php",
+        {
+          id: Number(id),
+          ...patchData,
+        }
+      );
+
+      return {
+        id: Number(result?.id ?? id),
+        ...patchData,
+      };
+    },
+
+    toggleLiveTripVisibility: async id => {
+      return patchRequest(
+        "/tracking/index.php?action=toggle-visible",
+        {
+          id: Number(id),
+        }
+      );
+    },
+
+    advanceLiveTrip: async id => {
+      return patchRequest(
+        "/tracking/index.php?action=advance",
+        {
+          id: Number(id),
+        }
+      );
+    },
+
+    /*
+     * The PHP backend does not have a dedicated "end" action.
+     * Its normal PATCH endpoint accepts status, so completing
+     * the tracking session is represented as status=completed.
+     */
+    endLiveTrip: async id => {
+      return patchRequest(
+        "/tracking/index.php",
+        {
+          id: Number(id),
+          status: "completed",
+        }
+      );
+    },
+
+    deleteLiveTrip: async id => {
+      return remove(
+        `/tracking/index.php?id=${encodeURIComponent(id)}`
+      );
+    },
   };
 })();

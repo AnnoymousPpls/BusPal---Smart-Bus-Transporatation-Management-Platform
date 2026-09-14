@@ -1,7 +1,14 @@
-/* BusPal — Operator Dashboard — Routes & Schedules
-   Registers itself into the shared ROUTES_MAP (see core.js)*/
+/* ============================================================
+   BusPal — Operator Dashboard — Routes & Schedules
+   Registers itself into the shared ROUTES_MAP (see core.js).
+   ============================================================ */
 
 (() => {
+    const routeFrom = (r) =>
+    r.from ?? r.from_city ?? "";
+
+  const routeTo = (r) =>
+    r.to ?? r.to_city ?? "";
   async function renderRoutes(root) {
     root.innerHTML = `<div class="empty"><div class="ico">⌁</div>Loading routes…</div>`;
     const [routes, buses, staff] = await Promise.all([OpsAPI.getRoutes(), OpsAPI.getBuses(), OpsAPI.getStaff()]);
@@ -32,12 +39,17 @@
 
     function draw() {
       const q = $("#routeSearch", root).value.trim().toLowerCase();
-      const rows = routes.filter(r => !q || r.from.toLowerCase().includes(q) || r.to.toLowerCase().includes(q));
+      const rows = routes.filter(r => {
+  const from = routeFrom(r).toLowerCase();
+  const to = routeTo(r).toLowerCase();
+
+  return !q || from.includes(q) || to.includes(q);
+});
       $("#routeList", root).innerHTML = rows.length ? rows.map(r => `
         <div class="card route-card ${r.visible ? "is-visible" : ""}">
           <div class="route-card-head">
             <div>
-              <div class="route-title">${esc(r.from)} <span class="hc-arrow">→</span> ${esc(r.to)}
+              <div class="route-title"> ${esc(routeFrom(r))} <span class="hc-arrow">→</span>${esc(routeTo(r))}
                 <span class="pill ${r.visible ? "active" : "hidden-pill"}">${r.visible ? "visible to passengers" : "hidden"}</span>
               </div>
               <div class="route-chip-row">
@@ -85,9 +97,29 @@
         toast("Route visibility updated.");
         go("routes");
       }));
-      $$("[data-edit-route]", root).forEach(b => b.addEventListener("click", () => openRouteForm(routes.find(r => r.id === b.dataset.editRoute))));
+      $$("[data-edit-route]", root).forEach(b =>
+  b.addEventListener("click", () => {
+    const route = routes.find(
+      r => Number(r.id) === Number(b.dataset.editRoute)
+    );
+
+    if (!route) {
+      toast("Route not found.");
+      return;
+    }
+
+    openRouteForm(route);
+  })
+);
       $$("[data-del-route]", root).forEach(b => b.addEventListener("click", () => {
-        const r = routes.find(x => x.id === b.dataset.delRoute);
+         const r = routes.find(
+  x => Number(x.id) === Number(b.dataset.delRoute)
+);
+
+if (!r) {
+  toast("Route not found.");
+  return;
+}
         confirmAction(`Delete route <strong>${esc(r.from)} → ${esc(r.to)}</strong> and all its departures?`, async () => {
           await OpsAPI.deleteRoute(r.id);
           toast("Route deleted.");
@@ -111,13 +143,37 @@
         toast("Departure removed.");
         go("routes");
       }));
-      $$("[data-add-dep]", root).forEach(b => b.addEventListener("click", async () => {
-        const time = prompt("Departure time (HH:MM)", "07:00");
-        if (!time) return;
-        await OpsAPI.addDeparture(b.dataset.addDep, { time });
-        toast("Departure added.");
-        go("routes");
-      }));
+      $$("[data-add-dep]", root).forEach(b =>
+  b.addEventListener("click", async () => {
+    let time = prompt("Departure time (HH:MM)", "07:00");
+
+    if (!time) return;
+
+    // Accept both 10:00 and 10.00
+    time = time.trim().replace(".", ":");
+
+    // Validate HH:MM
+    const match = time.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+
+    if (!match) {
+      toast("Enter the time as HH:MM, for example 10:00.");
+      return;
+    }
+
+    try {
+      await OpsAPI.addDeparture(
+        b.dataset.addDep,
+        { time }
+      );
+
+      toast(`Departure ${time} added.`);
+      go("routes");
+    } catch (error) {
+      console.error("Add departure failed:", error);
+      toast(error.message || "Unable to add departure.");
+    }
+  })
+);
     }
     $("#routeSearch", root).addEventListener("input", draw);
     $("#addRouteBtn", root).addEventListener("click", () => openRouteForm());
@@ -129,8 +185,8 @@
     const body = openForm(isEdit ? "Edit route" : "Add route", `
       <form id="routeForm" class="form-grid">
         <div class="row-2">
-          <div class="field-v"><label for="rfFrom">From</label><input type="text" id="rfFrom" value="${esc(route?.from || "")}" placeholder="e.g. Colombo" required /></div>
-          <div class="field-v"><label for="rfTo">To</label><input type="text" id="rfTo" value="${esc(route?.to || "")}" placeholder="e.g. Kandy" required /></div>
+          <div class="field-v"><label for="rfFrom">From</label><input type="text" id="rfFrom"  value="${esc(route ? routeFrom(route) : "")}" placeholder="e.g. Colombo" required /></div>
+          <div class="field-v"><label for="rfTo">To</label><input type="text" id="rfTo"  value="${esc(route ? routeTo(route) : "")}" placeholder="e.g. Kandy" required /></div>
         </div>
         <div class="row-2">
           <div class="field-v"><label for="rfDist">Distance (km)</label><input type="text" inputmode="numeric" id="rfDist" value="${route?.distanceKm ?? ""}" /></div>
