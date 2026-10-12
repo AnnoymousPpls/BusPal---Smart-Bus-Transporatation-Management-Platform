@@ -7,7 +7,7 @@ require_role($me, ['owner', 'manager']);
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
-// ---- GET: computed due/overdue status per bus (mirrors OpsAPI.getMaintenanceStatus) ----
+// GET-computed due/overdue status per bus  
 if ($method === 'GET' && $action === 'status') {
     $buses = $pdo->query('SELECT * FROM buses')->fetchAll();
     $lastServiceStmt = $pdo->prepare('SELECT COALESCE(MAX(odometer), 0) AS last FROM maintenance_log WHERE bus_id = ?');
@@ -29,7 +29,7 @@ if ($method === 'GET' && $action === 'status') {
     send_json($result);
 }
 
-// ---- GET: service history ----
+//GET-service history 
 if ($method === 'GET') {
     $busId = (int) ($_GET['busId'] ?? 0);
     $sql = 'SELECT m.*, b.plate FROM maintenance_log m JOIN buses b ON b.id = m.bus_id';
@@ -50,7 +50,7 @@ if ($method === 'GET') {
     send_json($rows);
 }
 
-// ---- POST: log a service, or send-to-maintenance / return-to-service ----
+//POST- log a service, or send-to-maintenance / return-to-service  
 if ($method === 'POST') {
     $in = body();
 
@@ -83,7 +83,7 @@ if ($method === 'POST') {
         send_json(['busId' => $busId], 200, 'Interval updated.');
     }
 
-    // default: log a regular service entry
+    // default-log a regular service entry
     $busId = (int) ($in['busId'] ?? 0);
     if (!$busId) send_error('Bus id is required.');
     $stmt = $pdo->prepare("INSERT INTO maintenance_log (bus_id, log_date, odometer, note, entry_type) VALUES (?, ?, ?, ?, 'service')");

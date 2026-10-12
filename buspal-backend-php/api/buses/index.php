@@ -3,14 +3,15 @@ require_once __DIR__ . '/../../includes/auth_helper.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-// Reading the fleet is public (matches the website: passengers see bus
-// photos on Book a Trip without needing to log in). Writes are owner/manager only.
+// Reading the fleet is public  
+// photos on Book a Trip 
 if ($method === 'GET') {
     $buses = $pdo->query('SELECT * FROM buses ORDER BY plate')->fetchAll();
     $photoStmt = $pdo->prepare(
     'SELECT id, photo_path FROM bus_photos WHERE bus_id = ? ORDER BY sort_order'
 );
     foreach ($buses as &$b) {
+        
         $photoStmt->execute([$b['id']]);
        $b['photos'] = array_map(
     fn($photo) => [
