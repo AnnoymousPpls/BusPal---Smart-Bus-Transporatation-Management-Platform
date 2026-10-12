@@ -15,11 +15,11 @@ function tracking_row(array $t): array {
     ];
 }
 
-// ---- Passenger: find the active, visible tracking session matching one of their own upcoming bookings ----
+//Pass:find the active, visible tracking session  
 if ($method === 'GET' && $me['role'] === 'passenger') {
     $stmt = $pdo->prepare(
-        "SELECT * FROM bookings WHERE passenger_id = ? AND status = 'upcoming'"
-    );
+    "SELECT * FROM bookings WHERE passenger_id = ?"
+);
     $stmt->execute([$me['id']]);
     foreach ($stmt->fetchAll() as $b) {
         $t = $pdo->prepare(
