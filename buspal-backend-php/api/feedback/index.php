@@ -76,11 +76,11 @@ if ($method === 'DELETE') {
     }
 
     /*
-     * Passenger:
-     *   Can withdraw only their own OPEN feedback.
+     * Pass
+     *    withdraw   own   feedback.
      *
-     * Owner/Manager:
-     *   Can delete any feedback record.
+     * Owner 
+     *    delete  feedback record.
      */
     if ($me['role'] === 'passenger') {
         if ((int) $row['passenger_id'] !== (int) $me['id']) {
