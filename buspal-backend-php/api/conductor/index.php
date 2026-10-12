@@ -6,11 +6,8 @@ $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
 /*
-|--------------------------------------------------------------------------
-| POST ?action=generate
 | Operator only
-| Creates or reuses a 6-character trip access code.
-|--------------------------------------------------------------------------
+| Creates or reuses a 6-character trip access code
 */
 
 if ($method === 'POST' && $action === 'generate') {
@@ -38,8 +35,7 @@ if ($method === 'POST' && $action === 'generate') {
 
 
     /*
-     * Reuse an existing code for the
-     * same route/date/departure.
+     * Reuse an existing code for the same route/date/departure.
      */
 
     $existing = $pdo->prepare(
@@ -64,39 +60,38 @@ if ($method === 'POST' && $action === 'generate') {
     $row = $existing->fetch();
 
 
-    if ($row) {
+     if ($row) {
 
-        $update = $pdo->prepare(
-            'UPDATE trip_codes
-             SET capacity = ?,
-                 bus_label = ?,
-                 driver_name = ?,
-                 conductor_name = ?
-             WHERE code = ?'
-        );
-
-
-        $update->execute([
-            (int) ($in['capacity'] ?? 40),
-            $in['busLabel'] ?? null,
-            $in['driverName'] ?? null,
-            $in['conductorName'] ?? null,
-            $row['code']
-        ]);
+    $update = $pdo->prepare(
+        'UPDATE trip_codes
+         SET capacity = ?,
+             bus_label = ?,
+             driver_name = ?,
+             conductor_name = ?
+         WHERE code = ?'
+    );
 
 
-        send_json(
-            [
-                'code' => $row['code']
-            ],
-            200
-        );
-    }
+    $update->execute([
+        (int) ($in['capacity'] ?? 40),
+        $in['busLabel'] ?? null,
+        $in['driverName'] ?? null,
+        $in['conductorName'] ?? null,
+        $row['code']
+    ]);
+
+
+    send_json(
+        [
+            'code' => $row['code']
+        ],
+        200
+    );
+}
 
 
     /*
      * Generate a code using characters
-     * that are easier to read.
      */
 
     $chars =
@@ -179,11 +174,10 @@ if ($method === 'POST' && $action === 'generate') {
 
 
 /*
-|--------------------------------------------------------------------------
 | GET ?code=XXXXXX
 | No login required.
 | Used by the standalone Conductor Portal.
-|--------------------------------------------------------------------------
+ 
 */
 
 if (
@@ -227,7 +221,6 @@ if (
 
     /*
      * Load all non-cancelled bookings
-     * for this exact trip.
      */
 
     $seatsStmt = $pdo->prepare(
@@ -333,13 +326,10 @@ if (
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| POST ?action=book
+/* 
 | No login required.
 | Used by the standalone Conductor Portal
 | for counter bookings.
-|--------------------------------------------------------------------------
 */
 
 if (
@@ -668,9 +658,8 @@ if (
 
 
 /*
-|--------------------------------------------------------------------------
 | Invalid request
-|--------------------------------------------------------------------------
+
 */
 
 send_error(
