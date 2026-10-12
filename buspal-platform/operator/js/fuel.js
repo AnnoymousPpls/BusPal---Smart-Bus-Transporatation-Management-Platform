@@ -1,7 +1,3 @@
-/* ============================================================
-   BusPal — Operator Dashboard — Fuel & Maintenance
-   Real PHP + MySQL backend
-   ============================================================ */
 
 (() => {
 
@@ -28,10 +24,10 @@
         maintenance,
         maintLog
       ] = await Promise.all([
-        OpsAPI.getFuelLog(),
-        OpsAPI.getBuses(),
-        OpsAPI.getMaintenanceStatus(),
-        OpsAPI.getMaintenanceLog()
+        BusPalAPI.getFuelLog(),
+        BusPalAPI.getBuses(),
+        BusPalAPI.getMaintenanceStatus(),
+        BusPalAPI.getMaintenanceLog()
       ]);
 
     } catch (error) {
@@ -82,6 +78,39 @@
 
 
     root.innerHTML = `
+
+      <!-- =====================================================
+           REPORT ACTION BAR
+           ===================================================== -->
+
+      <div
+        class="section-toolbar"
+        style="margin-bottom:18px"
+      >
+
+        <div>
+
+          <h3 style="margin-bottom:2px">
+            Fuel & Maintenance Reports
+          </h3>
+
+          <p class="muted small" style="margin-top:2px">
+            Generate a complete PDF report from the current fuel and maintenance records.
+          </p>
+
+        </div>
+
+        <button
+          class="btn brand"
+          id="fuelReportBtn"
+          type="button"
+          title="Generate Fuel & Maintenance PDF report"
+        >
+          ▣ Generate Report
+        </button>
+
+      </div>
+
 
       <!-- =====================================================
            SUMMARY
@@ -575,7 +604,7 @@
 
               async () => {
 
-                await OpsAPI.deleteFuelEntry(
+                await BusPalAPI.deleteFuelEntry(
                   Number(
                     button.dataset.delFuel
                   )
@@ -613,6 +642,66 @@
           openFuelForm(
             buses
           )
+      );
+
+
+    /* ========================================================
+       FUEL & MAINTENANCE REPORT
+       ======================================================== */
+
+    $("#fuelReportBtn", root)
+      .addEventListener(
+        "click",
+        async () => {
+
+          try {
+
+            if (
+              typeof window.downloadFuelReport !==
+              "function"
+            ) {
+
+              throw new Error(
+                "Fuel report module is not loaded. Make sure fuel-report.js is included before fuel.js."
+              );
+
+            }
+
+
+            await window.downloadFuelReport(
+              log,
+              buses,
+              maintenance,
+              maintLog
+            );
+
+          } catch (error) {
+
+            console.error(
+              "Fuel & Maintenance report failed:",
+              error
+            );
+
+
+            if (
+              typeof toast ===
+              "function"
+            ) {
+
+              toast(
+                error?.message ||
+                "Unable to generate Fuel & Maintenance report."
+              );
+
+            } else {
+
+              alert(
+                error?.message ||
+                "Unable to generate Fuel & Maintenance report."
+              );
+            }
+          }
+        }
       );
 
 
@@ -1108,7 +1197,7 @@
           }
 
 
-          await OpsAPI.updateMaintenanceInterval(
+          await BusPalAPI.updateMaintenanceInterval(
             bus.id,
             interval
           );
@@ -1195,7 +1284,7 @@
           event.preventDefault();
 
 
-          await OpsAPI.sendToMaintenance(
+          await BusPalAPI.sendToMaintenance(
             bus.id,
             $(
               "#smNote",
@@ -1325,7 +1414,7 @@
           event.preventDefault();
 
 
-          await OpsAPI.returnToService(
+          await BusPalAPI.returnToService(
             bus.id,
             {
               date:
@@ -1600,7 +1689,7 @@
 
             async () => {
 
-              await OpsAPI.deleteMaintenanceEntry(
+              await BusPalAPI.deleteMaintenanceEntry(
                 Number(
                   button.dataset.delService
                 )
@@ -1842,14 +1931,14 @@
 
           if (isEdit) {
 
-            await OpsAPI.updateMaintenanceEntry(
+            await BusPalAPI.updateMaintenanceEntry(
               existingEntry.id,
               data
             );
 
           } else {
 
-            await OpsAPI.addMaintenanceEntry(
+            await BusPalAPI.addMaintenanceEntry(
               data
             );
 
@@ -2183,14 +2272,14 @@
 
           if (isEdit) {
 
-            await OpsAPI.updateFuelEntry(
+            await BusPalAPI.updateFuelEntry(
               existingEntry.id,
               data
             );
 
           } else {
 
-            await OpsAPI.addFuelEntry(
+            await BusPalAPI.addFuelEntry(
               data
             );
 

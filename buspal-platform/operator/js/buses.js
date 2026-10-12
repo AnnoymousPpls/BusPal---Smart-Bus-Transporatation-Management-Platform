@@ -1,13 +1,4 @@
-/* ============================================================
-   BusPal — Operator Dashboard — Buses
-
-   Real PHP + MySQL bus management.
-   Bus photos use:
-     POST   /api/buses/photos.php
-     DELETE /api/buses/photos.php?id=...
-
-   The bus CRUD itself is delegated to OpsAPI.
-   ============================================================ */
+/*BusPal — Operator Dashboard — Buses */
 
 (() => {
   const API_BASE = "http://localhost/buspal-backend-php/api";
@@ -61,75 +52,9 @@
     return `http://localhost/buspal-backend-php/${String(path).replace(/^\/+/, "")}`;
   }
 
-  async function uploadBusPhoto(busId, file) {
-    const formData = new FormData();
-    formData.append("busId", String(busId));
-    formData.append("photo", file);
+ 
 
-    let response;
-
-    try {
-      response = await fetch(apiUrl("buses/photos.php"), {
-        method: "POST",
-        headers: authHeaders(),
-        body: formData,
-      });
-    } catch (error) {
-      console.error("Photo upload connection error:", error);
-      throw new Error("Unable to connect to the photo upload service.");
-    }
-
-    let body = null;
-
-    try {
-      body = await response.json();
-    } catch {
-      throw new Error(`Invalid photo upload response (HTTP ${response.status}).`);
-    }
-
-    if (!response.ok || body.success === false) {
-      throw new Error(
-        body.message || `Photo upload failed (HTTP ${response.status}).`
-      );
-    }
-
-    return body.data || body;
-  }
-
-  async function deleteBusPhoto(photoId) {
-    if (!photoId) return;
-
-    let response;
-
-    try {
-      response = await fetch(
-        apiUrl(`buses/photos.php?id=${encodeURIComponent(photoId)}`),
-        {
-          method: "DELETE",
-          headers: authHeaders(),
-        }
-      );
-    } catch (error) {
-      console.error("Photo delete connection error:", error);
-      throw new Error("Unable to connect to the photo service.");
-    }
-
-    let body = null;
-
-    try {
-      body = await response.json();
-    } catch {
-      throw new Error(`Invalid photo delete response (HTTP ${response.status}).`);
-    }
-
-    if (!response.ok || body.success === false) {
-      throw new Error(
-        body.message || `Photo deletion failed (HTTP ${response.status}).`
-      );
-    }
-
-    return body.data || body;
-  }
+   
 
   function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
@@ -151,7 +76,7 @@
     `;
 
     try {
-      const buses = await OpsAPI.getBuses();
+      const buses = await BusPalAPI.getBuses();
 
       const active = buses.filter(b => b.status === "active").length;
       const maintenance = buses.length - active;
@@ -359,7 +284,7 @@
         $$("[data-toggle-bus]", root).forEach(button => {
           button.addEventListener("click", async () => {
             try {
-              await OpsAPI.toggleBusStatus(button.dataset.toggleBus);
+              await BusPalAPI.toggleBusStatus(button.dataset.toggleBus);
               toast("Bus status updated.");
               go("buses");
             } catch (error) {
@@ -393,7 +318,7 @@
               `Delete bus <strong>${esc(bus.plate)}</strong>? This can't be undone.`,
               async () => {
                 try {
-                  await OpsAPI.deleteBus(bus.id);
+                  await BusPalAPI.deleteBus(bus.id);
                   toast("Bus deleted.");
                   go("buses");
                 } catch (error) {
@@ -755,9 +680,9 @@
         let savedBus;
 
         if (isEdit) {
-          savedBus = await OpsAPI.updateBus(bus.id, data);
+          savedBus = await BusPalAPI.updateBus(bus.id, data);
         } else {
-          savedBus = await OpsAPI.createBus(data);
+          savedBus = await BusPalAPI.createBus(data);
         }
 
         /*
@@ -777,7 +702,7 @@
         // Delete photos the user removed.
         for (const photoId of removedPhotoIds) {
           try {
-            await deleteBusPhoto(photoId);
+            await BusPalAPI.deleteBusPhoto(photoId);
           } catch (error) {
             console.error(
               `Failed to delete photo ${photoId}:`,
@@ -792,7 +717,7 @@
         );
 
         for (const photo of newPhotos) {
-          await uploadBusPhoto(busId, photo.file);
+          await BusPalAPI.uploadBusPhoto(busId, photo.file);
         }
 
         closeModal("formModal");
