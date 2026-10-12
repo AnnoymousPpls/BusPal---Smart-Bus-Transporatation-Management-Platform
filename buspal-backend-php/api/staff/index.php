@@ -4,12 +4,29 @@ require_once __DIR__ . '/../../includes/auth_helper.php';
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
-    $staff = $pdo->query('SELECT * FROM staff ORDER BY role, name')->fetchAll();
+
+    $staff = $pdo
+        ->query('SELECT * FROM staff ORDER BY role, name')
+        ->fetchAll();
+
     foreach ($staff as &$s) {
-        $s['id'] = (int) $s['id'];
-        $s['photoVisible'] = (bool) $s['photo_visible'];
+
+        $s['id'] = (int)$s['id'];
+
+        $s['photoVisible'] =
+            (bool)$s['photo_visible'];
+
+        // convert database path to frontend field
+        $s['photo'] =
+            !empty($s['photo_path'])
+            ? "/buspal-backend-php/" . $s['photo_path']
+            : null;
+
+
         unset($s['photo_visible']);
+
     }
+
     send_json($staff);
 }
 
