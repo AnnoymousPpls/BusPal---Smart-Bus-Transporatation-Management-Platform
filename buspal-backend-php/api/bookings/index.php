@@ -5,18 +5,25 @@ require_once __DIR__ . '/../../includes/auth_helper.php';
 $method = strtoupper($_SERVER['REQUEST_METHOD']);
 
 
-/* ============================================================
-   HELPERS
-   ============================================================ */
+/*
+|--------------------------------------------------------------------------
+| HELPERS
+|--------------------------------------------------------------------------
+*/
 
+/*
+ * Generate a unique passenger booking PNR.
+ */
 function generate_pnr(PDO $pdo): string
 {
     $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
     do {
+
         $pnr = 'BP';
 
         for ($i = 0; $i < 6; $i++) {
+
             $pnr .= $chars[
                 random_int(
                     0,
@@ -42,8 +49,48 @@ function generate_pnr(PDO $pdo): string
 
 /*
 |--------------------------------------------------------------------------
-| Return seats already occupied for one exact trip instance.
-| Cancelled bookings do not occupy seats.
+| VALIDATE DATE
+|--------------------------------------------------------------------------
+*/
+
+function validate_booking_date($date): string
+{
+    $date = trim((string) $date);
+
+    $parsed = DateTime::createFromFormat(
+        'Y-m-d',
+        $date
+    );
+
+    if (
+        !$parsed ||
+        $parsed->format('Y-m-d') !== $date
+    ) {
+
+        send_error(
+            'Invalid travel date. Use YYYY-MM-DD format.',
+            400
+        );
+    }
+
+    return $date;
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| TAKEN SEATS
+|--------------------------------------------------------------------------
+|
+| Only non-cancelled bookings occupy seats.
+|
+| Seats are checked against:
+|
+|   From
+|   To
+|   Travel date
+|   Departure time
+|
 |--------------------------------------------------------------------------
 */
 
@@ -77,16 +124,16 @@ function taken_seats(
 
     foreach ($stmt->fetchAll() as $row) {
 
-        $decoded =
-            json_decode(
-                $row['seats'],
-                true
-            );
+        $decoded = json_decode(
+            $row['seats'],
+            true
+        );
 
 
         if (is_array($decoded)) {
 
             foreach ($decoded as $seat) {
+
                 $taken[] = (string) $seat;
             }
         }
@@ -101,7 +148,7 @@ function taken_seats(
 
 /*
 |--------------------------------------------------------------------------
-| Convert database row to frontend format.
+| BOOKING → FRONTEND FORMAT
 |--------------------------------------------------------------------------
 */
 
@@ -109,11 +156,10 @@ function booking_to_ui(
     array $booking
 ): array {
 
-    $seats =
-        json_decode(
-            $booking['seats'] ?? '[]',
-            true
-        );
+    $seats = json_decode(
+        $booking['seats'] ?? '[]',
+        true
+    );
 
 
     if (!is_array($seats)) {
@@ -191,9 +237,22 @@ function booking_to_ui(
 }
 
 
-/* ============================================================
-   PUBLIC TRIP SEARCH
-   ============================================================ */
+/*
+|--------------------------------------------------------------------------
+| PUBLIC TRIP SEARCH
+|--------------------------------------------------------------------------
+|
+| Passenger can search without login.
+|
+| Example:
+|
+| /bookings/index.php
+|   ?from=Batticaloa
+|   &to=Colombo
+|   &date=2026-09-20
+|
+|--------------------------------------------------------------------------
+*/
 
 if (
     $method === 'GET' &&
@@ -203,6 +262,8 @@ if (
         ($_GET['scope'] ?? '') === 'trips'
     )
 ) {
+   
+   
 
     $from =
         trim(
@@ -214,33 +275,92 @@ if (
             $_GET['to'] ?? ''
         );
 
+    /*
+     * IMPORTANT:
+     *
+     * If no date is supplied,
+     * use today's date.
+     */
     $date =
         trim(
             $_GET['date'] ?? ''
         );
 
+    if ($date === '') {
+
+        $date = date('Y-m-d');
+
+    } else {
+
+        $date =
+            validate_booking_date(
+                $date
+            );
+    }
+
+
+    /*
+     |--------------------------------------------------------------------------
+     | FIND ONLY DEPARTURES FOR THE SELECTED DATE
+     |--------------------------------------------------------------------------
+     |
+     | THIS IS THE IMPORTANT FIX.
+     |
+     | Previously the query did NOT check:
+     |
+     |     d.departure_date = ?
+     |
+     | Therefore a departure from another date could appear
+     | on the passenger screen.
+     |
+     |--------------------------------------------------------------------------
+     */
 
     $sql = "
         SELECT
             d.id AS departure_id,
+            d.departure_date,
+
+            r.id AS route_id,
             r.from_city,
             r.to_city,
             r.fare,
+
             d.time,
+
+            b.id AS bus_id,
             b.plate,
             b.type AS bus_type,
             b.capacity
+
         FROM departures d
+
         JOIN routes r
-          ON r.id = d.route_id
+            ON r.id = d.route_id
+
         JOIN buses b
-          ON b.id = d.bus_id
+            ON b.id = d.bus_id
+
         WHERE r.visible = 1
+
+          AND d.departure_date = ?
     ";
 
 
-    $params = [];
+    /*
+     * Date is now ALWAYS the first parameter.
+     */
 
+    $params = [
+        $date
+    ];
+
+
+    /*
+     |--------------------------------------------------------------------------
+     | FROM FILTER
+     |--------------------------------------------------------------------------
+     */
 
     if ($from !== '') {
 
@@ -252,6 +372,12 @@ if (
     }
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | TO FILTER
+     |--------------------------------------------------------------------------
+     */
+
     if ($to !== '') {
 
         $sql .=
@@ -262,13 +388,26 @@ if (
     }
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | ORDER
+     |--------------------------------------------------------------------------
+     */
+
     $sql .=
         " ORDER BY d.time ASC";
 
 
-    $stmt =
-        $pdo->prepare($sql);
+    /*
+     |--------------------------------------------------------------------------
+     | EXECUTE
+     |--------------------------------------------------------------------------
+     */
 
+    $stmt =
+        $pdo->prepare(
+            $sql
+        );
 
     $stmt->execute(
         $params
@@ -279,23 +418,46 @@ if (
         $stmt->fetchAll();
 
 
-    $useDate =
-        $date !== ''
-            ? $date
-            : date('Y-m-d');
+    /*
+     |--------------------------------------------------------------------------
+     | BUS PHOTOS
+     |--------------------------------------------------------------------------
+     */
+
+    $photoStmt =
+        $pdo->prepare(
+            'SELECT
+                id,
+                photo_path
+             FROM bus_photos
+             WHERE bus_id = ?
+             ORDER BY sort_order ASC'
+        );
 
 
     $results = [];
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | BUILD PASSENGER RESULTS
+     |--------------------------------------------------------------------------
+     */
+
     foreach ($trips as $trip) {
+
+
+        /*
+         * Get already booked seats
+         * for this EXACT date and time.
+         */
 
         $taken =
             taken_seats(
                 $pdo,
                 $trip['from_city'],
                 $trip['to_city'],
-                $useDate,
+                $date,
                 $trip['time']
             );
 
@@ -304,13 +466,55 @@ if (
             (int) $trip['capacity'];
 
 
+        /*
+         * Get photos.
+         */
+
+        $photoStmt->execute([
+            $trip['bus_id']
+        ]);
+
+
+        $photos =
+            array_map(
+                function ($photo) {
+
+                    return [
+
+                        'id' =>
+                            (int) $photo['id'],
+
+                        'path' =>
+                            $photo['photo_path']
+
+                    ];
+                },
+                $photoStmt->fetchAll()
+            );
+
+
+        /*
+         * Passenger trip response.
+         */
+
         $results[] = [
 
+            /*
+             * IMPORTANT:
+             * This is the actual departure ID.
+             */
             'id' =>
                 (int) $trip['departure_id'],
 
             'departureId' =>
                 (int) $trip['departure_id'],
+
+            'busId' =>
+                (int) $trip['bus_id'],
+
+            'routeId' =>
+                (int) $trip['route_id'],
+
 
             'from' =>
                 $trip['from_city'],
@@ -318,8 +522,15 @@ if (
             'to' =>
                 $trip['to_city'],
 
+
+            /*
+             * IMPORTANT:
+             * This is the ACTUAL departure date
+             * from the database.
+             */
             'date' =>
-                $useDate,
+                $trip['departure_date'],
+
 
             'depTime' =>
                 substr(
@@ -328,17 +539,21 @@ if (
                     5
                 ),
 
+
             'busType' =>
                 $trip['bus_type'],
 
             'plate' =>
                 $trip['plate'],
 
+
             'price' =>
                 (int) $trip['fare'],
 
+
             'seatsTotal' =>
                 $capacity,
+
 
             'seatsAvailable' =>
                 max(
@@ -347,8 +562,14 @@ if (
                     count($taken)
                 ),
 
+
             'seatsTaken' =>
                 $taken,
+
+
+            'photos' =>
+                $photos,
+
 
             'arrTime' =>
                 null,
@@ -359,23 +580,173 @@ if (
     }
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | RETURN RESULTS
+     |--------------------------------------------------------------------------
+     */
+
     send_json(
         $results
     );
 }
 
+/*
+|--------------------------------------------------------------------------
+| GET SINGLE DEPARTURE BY ID
+|--------------------------------------------------------------------------
+*/
 
-/* ============================================================
-   ALL REMAINING REQUESTS REQUIRE LOGIN
-   ============================================================ */
+if (
+    $method === 'GET' &&
+    isset($_GET['departureId'])
+) {
 
-$me =
-    require_auth($pdo);
+    $departureId =
+        (int) $_GET['departureId'];
 
 
-/* ============================================================
-   GET BOOKINGS
-   ============================================================ */
+    $stmt = $pdo->prepare(
+        "
+        SELECT
+
+            d.id AS departure_id,
+            d.departure_date,
+            d.time,
+
+            r.from_city,
+            r.to_city,
+            r.fare,
+
+            b.plate,
+            b.type AS bus_type,
+            b.capacity
+
+        FROM departures d
+
+        JOIN routes r
+            ON r.id = d.route_id
+
+        JOIN buses b
+            ON b.id = d.bus_id
+
+        WHERE d.id = ?
+
+        LIMIT 1
+        "
+    );
+
+
+    $stmt->execute([
+        $departureId
+    ]);
+
+
+    $trip = $stmt->fetch();
+
+
+    if(!$trip){
+
+        send_error(
+            "Trip not found.",
+            404
+        );
+
+    }
+
+
+    $taken =
+        taken_seats(
+            $pdo,
+            $trip['from_city'],
+            $trip['to_city'],
+            $trip['departure_date'],
+            $trip['time']
+        );
+
+
+    send_json([
+
+        "id" =>
+            (int)$trip['departure_id'],
+
+        "from" =>
+            $trip['from_city'],
+
+        "to" =>
+            $trip['to_city'],
+
+        "date" =>
+            $trip['departure_date'],
+
+        "depTime" =>
+            substr(
+                $trip['time'],
+                0,
+                5
+            ),
+
+        "busType" =>
+            $trip['bus_type'],
+
+        "plate" =>
+            $trip['plate'],
+
+        "price" =>
+            (int)$trip['fare'],
+
+        "seatsTotal" =>
+            (int)$trip['capacity'],
+
+        "seatsTaken" =>
+            $taken
+
+    ]);
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| ALL REMAINING REQUESTS REQUIRE LOGIN
+|--------------------------------------------------------------------------
+*/
+
+
+$me = require_auth($pdo);
+
+
+/*
+|--------------------------------------------------------------------------
+| AUTO COMPLETE EXPIRED BOOKINGS
+|--------------------------------------------------------------------------
+|
+| Change old upcoming trips into completed history.
+|
+| Rules:
+|
+| - Future trips  -> upcoming
+| - Past trips    -> completed
+| - Cancelled     -> cancelled (never touched)
+|
+|--------------------------------------------------------------------------
+*/
+
+
+$pdo->query("
+    UPDATE bookings
+    SET status = 'completed'
+    WHERE status = 'upcoming'
+    AND TIMESTAMP(travel_date, dep_time) < NOW()
+");
+
+
+
+/*
+|--------------------------------------------------------------------------
+| GET BOOKINGS
+|--------------------------------------------------------------------------
+*/
 
 if ($method === 'GET') {
 
@@ -383,15 +754,20 @@ if ($method === 'GET') {
         $_GET['scope'] ?? '';
 
 
-    /* --------------------------------------------------------
-       Operator
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | OPERATOR BOOKINGS
+     |--------------------------------------------------------------------------
+     */
 
     if ($scope === 'operator') {
 
         require_role(
             $me,
-            ['owner', 'manager']
+            [
+                'owner',
+                'manager'
+            ]
         );
 
 
@@ -416,13 +792,17 @@ if ($method === 'GET') {
     }
 
 
-    /* --------------------------------------------------------
-       Passenger
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | PASSENGER BOOKINGS
+     |--------------------------------------------------------------------------
+     */
 
     require_role(
         $me,
-        ['passenger']
+        [
+            'passenger'
+        ]
     );
 
 
@@ -449,15 +829,19 @@ if ($method === 'GET') {
 }
 
 
-/* ============================================================
-   CREATE PASSENGER BOOKING
-   ============================================================ */
+/*
+|--------------------------------------------------------------------------
+| CREATE PASSENGER BOOKING
+|--------------------------------------------------------------------------
+*/
 
 if ($method === 'POST') {
 
     require_role(
         $me,
-        ['passenger']
+        [
+            'passenger'
+        ]
     );
 
 
@@ -481,6 +865,12 @@ if ($method === 'POST') {
         $in['seats'] ?? [];
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | REQUIRED FIELDS
+     |--------------------------------------------------------------------------
+     */
+
     if (
         !$departureId ||
         !$date ||
@@ -494,6 +884,24 @@ if ($method === 'POST') {
     }
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | VALIDATE DATE
+     |--------------------------------------------------------------------------
+     */
+
+    $date =
+        validate_booking_date(
+            $date
+        );
+
+
+    /*
+     |--------------------------------------------------------------------------
+     | NORMALISE SEATS
+     |--------------------------------------------------------------------------
+     */
+
     $seats =
         array_values(
             array_unique(
@@ -505,26 +913,47 @@ if ($method === 'POST') {
         );
 
 
-    /* --------------------------------------------------------
-       Load trip
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | LOAD EXACT DEPARTURE
+     |--------------------------------------------------------------------------
+     |
+     | IMPORTANT:
+     |
+     | We now retrieve departure_date.
+     |
+     |--------------------------------------------------------------------------
+     */
 
     $stmt =
         $pdo->prepare(
             'SELECT
+
+                d.id AS departure_id,
+                d.departure_date,
                 d.time,
+
+                r.id AS route_id,
                 r.from_city,
                 r.to_city,
                 r.fare,
+                r.visible,
+
+                b.id AS bus_id,
                 b.plate,
                 b.type AS bus_type,
                 b.capacity
+
              FROM departures d
+
              JOIN routes r
                ON r.id = d.route_id
+
              JOIN buses b
                ON b.id = d.bus_id
+
              WHERE d.id = ?
+
              LIMIT 1'
         );
 
@@ -538,6 +967,12 @@ if ($method === 'POST') {
         $stmt->fetch();
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | DEPARTURE NOT FOUND
+     |--------------------------------------------------------------------------
+     */
+
     if (!$trip) {
 
         send_error(
@@ -547,13 +982,58 @@ if ($method === 'POST') {
     }
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | ROUTE MUST STILL BE VISIBLE
+     |--------------------------------------------------------------------------
+     */
+
+    if (!(bool) $trip['visible']) {
+
+        send_error(
+            'This route is no longer available for passenger booking.',
+            409
+        );
+    }
+
+
+    /*
+     |--------------------------------------------------------------------------
+     | CRITICAL DATE CHECK
+     |--------------------------------------------------------------------------
+     |
+     | The passenger's selected travel date MUST match
+     | the actual departure date.
+     |
+     |--------------------------------------------------------------------------
+     */
+
+    if (
+        $trip['departure_date'] !== $date
+    ) {
+
+        send_error(
+            'The selected departure is not available for the requested date.',
+            409
+        );
+    }
+
+
+    /*
+     |--------------------------------------------------------------------------
+     | CAPACITY
+     |--------------------------------------------------------------------------
+     */
+
     $capacity =
         (int) $trip['capacity'];
 
 
-    /* --------------------------------------------------------
-       Validate seats
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | VALIDATE SEATS
+     |--------------------------------------------------------------------------
+     */
 
     foreach ($seats as $seat) {
 
@@ -572,9 +1052,11 @@ if ($method === 'POST') {
     }
 
 
-    /* --------------------------------------------------------
-       Check availability
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | CHECK SEAT AVAILABILITY
+     |--------------------------------------------------------------------------
+     */
 
     $taken =
         taken_seats(
@@ -607,9 +1089,11 @@ if ($method === 'POST') {
     }
 
 
-    /* --------------------------------------------------------
-       Create booking
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | GENERATE PNR
+     |--------------------------------------------------------------------------
+     */
 
     $pnr =
         generate_pnr(
@@ -617,48 +1101,96 @@ if ($method === 'POST') {
         );
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | CREATE BOOKING
+     |--------------------------------------------------------------------------
+     */
+
     $stmt =
         $pdo->prepare(
             "INSERT INTO bookings (
+
                 passenger_id,
                 passenger_name,
                 phone,
+
                 from_city,
                 to_city,
+
                 travel_date,
                 dep_time,
+
                 bus_plate,
                 bus_type,
+
                 price,
+
                 pickup_point,
+
                 seats,
                 pnr,
+
                 status,
                 source
+
             )
+
             VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, 'upcoming', 'self'
+
+                ?, ?, ?,
+                ?, ?,
+                ?, ?,
+                ?, ?,
+                ?,
+                ?,
+                ?, ?,
+                'upcoming',
+                'self'
+
             )"
         );
 
 
     $stmt->execute([
+
         $me['id'],
+
         $me['name'],
+
         $me['phone'],
+
         $trip['from_city'],
+
         $trip['to_city'],
-        $date,
+
+        /*
+         * Use the ACTUAL departure date.
+         */
+        $trip['departure_date'],
+
         $trip['time'],
+
         $trip['plate'],
+
         $trip['bus_type'],
+
         (int) $trip['fare'],
+
         $trip['from_city'],
+
         json_encode($seats),
+
         $pnr
+
     ]);
 
+
+    /*
+     |--------------------------------------------------------------------------
+     | GET CREATED BOOKING
+     |--------------------------------------------------------------------------
+     */
 
     $newId =
         (int) $pdo->lastInsertId();
@@ -682,6 +1214,12 @@ if ($method === 'POST') {
         $stmt->fetch();
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | RESPONSE
+     |--------------------------------------------------------------------------
+     */
+
     send_json(
         booking_to_ui(
             $created
@@ -692,16 +1230,19 @@ if ($method === 'POST') {
 }
 
 
-/* ============================================================
-   CANCEL BOOKING
-   PATCH /api/bookings/index.php
-
-   Owner/Manager:
-     Can cancel any booking.
-
-   Passenger:
-     Can cancel only their own booking.
-   ============================================================ */
+/*
+|--------------------------------------------------------------------------
+| CANCEL BOOKING
+|--------------------------------------------------------------------------
+|
+| Passenger:
+|   Can cancel own booking.
+|
+| Owner / Manager:
+|   Can cancel any booking.
+|
+|--------------------------------------------------------------------------
+*/
 
 if ($method === 'PATCH') {
 
@@ -723,9 +1264,11 @@ if ($method === 'PATCH') {
     }
 
 
-    /* --------------------------------------------------------
-       Find booking
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | FIND BOOKING
+     |--------------------------------------------------------------------------
+     */
 
     $stmt =
         $pdo->prepare(
@@ -754,9 +1297,11 @@ if ($method === 'PATCH') {
     }
 
 
-    /* --------------------------------------------------------
-       Permission
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | PERMISSION
+     |--------------------------------------------------------------------------
+     */
 
     if (
         $me['role'] ===
@@ -778,14 +1323,19 @@ if ($method === 'PATCH') {
 
         require_role(
             $me,
-            ['owner', 'manager']
+            [
+                'owner',
+                'manager'
+            ]
         );
     }
 
 
-    /* --------------------------------------------------------
-       Already cancelled
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | ALREADY CANCELLED
+     |--------------------------------------------------------------------------
+     */
 
     if (
         $booking['status'] ===
@@ -798,9 +1348,11 @@ if ($method === 'PATCH') {
     }
 
 
-    /* --------------------------------------------------------
-       Cancel
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | CANCEL
+     |--------------------------------------------------------------------------
+     */
 
     $pdo->beginTransaction();
 
@@ -859,6 +1411,12 @@ if ($method === 'PATCH') {
     }
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | RESPONSE
+     |--------------------------------------------------------------------------
+     */
+
     send_json(
         [
             'id' =>
@@ -873,18 +1431,24 @@ if ($method === 'PATCH') {
 }
 
 
-/* ============================================================
-   DELETE BOOKING
-   DELETE /api/bookings/index.php?id=ID
-
-   Owner/Manager only.
-   ============================================================ */
+/*
+|--------------------------------------------------------------------------
+| DELETE BOOKING
+|--------------------------------------------------------------------------
+|
+| Owner / Manager only.
+|
+|--------------------------------------------------------------------------
+*/
 
 if ($method === 'DELETE') {
 
     require_role(
         $me,
-        ['owner', 'manager']
+        [
+            'owner',
+            'manager'
+        ]
     );
 
 
@@ -902,9 +1466,11 @@ if ($method === 'DELETE') {
     }
 
 
-    /* --------------------------------------------------------
-       Check booking exists
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | CHECK BOOKING EXISTS
+     |--------------------------------------------------------------------------
+     */
 
     $stmt =
         $pdo->prepare(
@@ -929,9 +1495,11 @@ if ($method === 'DELETE') {
     }
 
 
-    /* --------------------------------------------------------
-       Delete booking
-       -------------------------------------------------------- */
+    /*
+     |--------------------------------------------------------------------------
+     | DELETE
+     |--------------------------------------------------------------------------
+     */
 
     $stmt =
         $pdo->prepare(
@@ -956,6 +1524,12 @@ if ($method === 'DELETE') {
     }
 
 
+    /*
+     |--------------------------------------------------------------------------
+     | RESPONSE
+     |--------------------------------------------------------------------------
+     */
+
     send_json(
         [
             'id' =>
@@ -967,9 +1541,11 @@ if ($method === 'DELETE') {
 }
 
 
-/* ============================================================
-   METHOD NOT ALLOWED
-   ============================================================ */
+/*
+|--------------------------------------------------------------------------
+| METHOD NOT ALLOWED
+|--------------------------------------------------------------------------
+*/
 
 send_error(
     'Method not allowed.',
