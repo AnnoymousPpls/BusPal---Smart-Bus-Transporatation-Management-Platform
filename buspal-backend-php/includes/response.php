@@ -25,8 +25,7 @@ function send_error(string $message, int $status = 400): void {
     exit;
 }
 
-/** Reads and JSON-decodes the request body. Returns [] if empty/invalid rather than null, so callers can use ?? safely. */
-function body(): array {
+ function body(): array {
     $raw = file_get_contents('php://input');
     $decoded = json_decode($raw, true);
     return is_array($decoded) ? $decoded : [];
