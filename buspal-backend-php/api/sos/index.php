@@ -1,10 +1,15 @@
 <?php
+
 require_once __DIR__ . '/../../includes/auth_helper.php';
 
 $me = require_auth($pdo);
 $method = $_SERVER['REQUEST_METHOD'];
 
+
+/* HELPER Format SOS response*/
+
 function sos_row(array $s): array {
+
     return [
         'id' => (int) $s['id'],
         'trip' => $s['trip_ref'],
@@ -15,13 +20,12 @@ function sos_row(array $s): array {
     ];
 }
 
-/* ============================================================
-   GET
-   Passenger  → own SOS alerts
-   Owner/Manager → all SOS alerts
-   ============================================================ */
+
+/* GET,Passenger  → own SOS alerts,Owner/Manager → all SOS alerts */
 
 if ($method === 'GET') {
+
+    /*PASSENGER*/
 
     if ($me['role'] === 'passenger') {
 
@@ -32,7 +36,9 @@ if ($method === 'GET') {
              ORDER BY created_at DESC'
         );
 
-        $stmt->execute([$me['id']]);
+        $stmt->execute([
+            $me['id']
+        ]);
 
         send_json(
             array_map(
@@ -42,7 +48,16 @@ if ($method === 'GET') {
         );
     }
 
-    require_role($me, ['owner', 'manager']);
+
+    /*OWNER / MANAGER*/
+
+    require_role(
+        $me,
+        ['owner', 'manager']
+    );
+
+
+    /*OPEN SOS COUNT*/
 
     if (($_GET['count'] ?? '') === '1') {
 
@@ -56,6 +71,9 @@ if ($method === 'GET') {
             'openCount' => (int) $open
         ]);
     }
+
+
+    /*ALL SOS ALERTS*/
 
     $stmt = $pdo->query(
         'SELECT *
@@ -72,23 +90,105 @@ if ($method === 'GET') {
 }
 
 
-/* ============================================================
-   POST
-   Passenger → create SOS alert
-   ============================================================ */
+/*Passenger → create SOS alert*/
 
 if ($method === 'POST') {
 
-    require_role($me, ['passenger']);
+    require_role(
+        $me,
+        ['passenger']
+    );
 
     $in = body();
 
-    $tripRef = $in['trip'] ??
-        ($in['bookingId'] ?? null);
+
+    /*TRIP*/
+
+    $tripRef =
+        $in['trip']
+        ?? ($in['bookingId'] ?? null);
+
+
+    
 
     $note = trim(
         $in['note'] ?? ''
     );
+
+
+    /*EMERGENCY CONTACT,null = BT Express Operations */
+
+    $emergencyContactId =
+        $in['emergencyContactId']
+        ?? null;
+
+
+    /*
+     * Convert empty string to null.
+     */
+    if (
+        $emergencyContactId === ''
+        || $emergencyContactId === 0
+        || $emergencyContactId === '0'
+    ) {
+
+        $emergencyContactId = null;
+    }
+
+
+    /*
+     * Validate contact ID if supplied.
+     */
+    if ($emergencyContactId !== null) {
+
+        $emergencyContactId =
+            (int) $emergencyContactId;
+
+        if ($emergencyContactId <= 0) {
+
+            send_error(
+                'Invalid emergency contact.'
+            );
+        }
+
+
+        /*Only allow the passenger to use THEIR OWN
+           emergency contacts.*/
+
+        $contactStmt = $pdo->prepare(
+            'SELECT id, name, phone
+             FROM emergency_contacts
+             WHERE id = ?
+               AND passenger_id = ?'
+        );
+
+        $contactStmt->execute([
+            $emergencyContactId,
+            $me['id']
+        ]);
+
+        $contact =
+            $contactStmt->fetch();
+
+
+        if (!$contact) {
+
+            send_error(
+                'Emergency contact not found.',
+                404
+            );
+        }
+
+
+        $contactName =
+            $contact['name'];
+
+        $contactPhone =
+            $contact['phone'];
+    }
+
+
+    /*CREATE SOS ALERT*/
 
     $stmt = $pdo->prepare(
         "INSERT INTO sos_alerts (
@@ -101,25 +201,82 @@ if ($method === 'POST') {
         VALUES (?, ?, ?, ?, 'open')"
     );
 
+
+    if ($emergencyContactId === null) {
+
+        $recipientNote =
+            '[Recipient: BT Express Operations]';
+
+    } else {
+
+        $recipientNote =
+            '[Recipient: '
+            . $contactName
+            . ' - '
+            . $contactPhone
+            . ']';
+    }
+
+
+    if ($note !== '') {
+
+        $finalNote =
+            $recipientNote
+            . ' '
+            . $note;
+
+    } else {
+
+        $finalNote =
+            $recipientNote;
+    }
+
+
     $stmt->execute([
         $me['id'],
         $me['name'],
         $tripRef,
-        $note
+        $finalNote
     ]);
 
-    send_json(
-        ['id' => (int) $pdo->lastInsertId()],
-        201,
-        'SOS sent. BT Express operations has been notified.'
-    );
+
+    $sosId =
+        (int) $pdo->lastInsertId();
+
+
+    
+
+    if ($emergencyContactId === null) {
+
+        send_json(
+            [
+                'id' => $sosId,
+                'recipient' => 'BT Express Operations',
+                'emergencyContactId' => null
+            ],
+            201,
+            'SOS sent. BT Express operations has been notified.'
+        );
+
+    } else {
+
+        send_json(
+            [
+                'id' => $sosId,
+                'recipient' => $contactName,
+                'phone' => $contactPhone,
+                'emergencyContactId' => $emergencyContactId
+            ],
+            201,
+            'SOS sent to your emergency contact.'
+        );
+    }
 }
 
 
-/* ============================================================
+/*  
    PATCH
-   Owner/Manager → resolve SOS
-   ============================================================ */
+   Owner/Manager → resolve SOS */
 
 if ($method === 'PATCH') {
 
@@ -130,11 +287,17 @@ if ($method === 'PATCH') {
 
     $in = body();
 
-    $id = (int) ($in['id'] ?? 0);
+    $id =
+        (int) ($in['id'] ?? 0);
+
 
     if (!$id) {
-        send_error('Missing alert id.');
+
+        send_error(
+            'Missing alert id.'
+        );
     }
+
 
     $stmt = $pdo->prepare(
         'SELECT id
@@ -142,30 +305,43 @@ if ($method === 'PATCH') {
          WHERE id = ?'
     );
 
-    $stmt->execute([$id]);
+    $stmt->execute([
+        $id
+    ]);
+
 
     if (!$stmt->fetch()) {
-        send_error('SOS alert not found.', 404);
+
+        send_error(
+            'SOS alert not found.',
+            404
+        );
     }
+
 
     $pdo->prepare(
         "UPDATE sos_alerts
          SET status = 'resolved'
          WHERE id = ?"
-    )->execute([$id]);
+    )->execute([
+        $id
+    ]);
+
 
     send_json(
-        ['id' => $id],
+        [
+            'id' => $id
+        ],
         200,
         'Marked resolved.'
     );
 }
 
 
-/* ============================================================
+/*  
    DELETE
    Owner/Manager → delete SOS record
-   ============================================================ */
+    */
 
 if ($method === 'DELETE') {
 
@@ -174,11 +350,17 @@ if ($method === 'DELETE') {
         ['owner', 'manager']
     );
 
-    $id = (int) ($_GET['id'] ?? 0);
+    $id =
+        (int) ($_GET['id'] ?? 0);
+
 
     if (!$id) {
-        send_error('Missing alert id.');
+
+        send_error(
+            'Missing alert id.'
+        );
     }
+
 
     $stmt = $pdo->prepare(
         'SELECT id
@@ -186,23 +368,43 @@ if ($method === 'DELETE') {
          WHERE id = ?'
     );
 
-    $stmt->execute([$id]);
+    $stmt->execute([
+        $id
+    ]);
+
 
     if (!$stmt->fetch()) {
-        send_error('SOS alert not found.', 404);
+
+        send_error(
+            'SOS alert not found.',
+            404
+        );
     }
+
 
     $pdo->prepare(
         'DELETE FROM sos_alerts
          WHERE id = ?'
-    )->execute([$id]);
+    )->execute([
+        $id
+    ]);
+
 
     send_json(
-        ['id' => $id],
+        [
+            'id' => $id
+        ],
         200,
         'SOS record deleted.'
     );
 }
 
 
-send_error('Method not allowed.', 405);
+/*  
+   INVALID METHOD
+   */
+
+send_error(
+    'Method not allowed.',
+    405
+);
