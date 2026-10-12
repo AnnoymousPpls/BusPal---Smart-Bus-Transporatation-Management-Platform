@@ -8,10 +8,7 @@ require_role($me, ['owner']);
 $method = strtoupper($_SERVER['REQUEST_METHOD']);
 
 
-/* ============================================================
-   GET
-   List all owner + manager accounts
-   ============================================================ */
+/*GETList all owner + manager accounts*/
 
 if ($method === 'GET') {
 
@@ -33,10 +30,7 @@ if ($method === 'GET') {
 }
 
 
-/* ============================================================
-   POST
-   Add a new admin
-   ============================================================ */
+/*POSTAdd a new admin*/
 
 if ($method === 'POST') {
 
@@ -146,15 +140,7 @@ if ($method === 'POST') {
 }
 
 
-/* ============================================================
-   PATCH
-   Edit owner/manager account
-   Supports:
-     name
-     email
-     phone
-     role
-   ============================================================ */
+/*Edit owner/manager account*/
 
 if ($method === 'PATCH') {
 
@@ -169,7 +155,7 @@ if ($method === 'PATCH') {
     }
 
 
-    /* Make sure target account exists */
+     
 
     $check = $pdo->prepare(
         'SELECT id, role
@@ -196,7 +182,7 @@ if ($method === 'PATCH') {
     $params = [];
 
 
-    /* Name */
+     
 
     if (isset($in['name'])) {
 
@@ -215,7 +201,7 @@ if ($method === 'PATCH') {
     }
 
 
-    /* Email */
+   
 
     if (isset($in['email'])) {
 
@@ -254,8 +240,7 @@ if ($method === 'PATCH') {
         $params[] = $email;
     }
 
-
-    /* Phone */
+ 
 
     if (isset($in['phone'])) {
 
@@ -268,7 +253,7 @@ if ($method === 'PATCH') {
     }
 
 
-    /* Role */
+   
 
     if (isset($in['role'])) {
 
@@ -287,10 +272,7 @@ if ($method === 'PATCH') {
         }
 
 
-        /*
-         * Do not remove the last owner.
-         */
-
+        
         if (
             $target['role'] === 'owner' &&
             $role === 'manager'
@@ -351,10 +333,7 @@ if ($method === 'PATCH') {
 }
 
 
-/* ============================================================
-   DELETE
-   Remove an owner/manager account
-   ============================================================ */
+/*DELETE*/
 
 if ($method === 'DELETE') {
 
@@ -432,9 +411,7 @@ if ($method === 'DELETE') {
 }
 
 
-/* ============================================================
-   INVALID METHOD
-   ============================================================ */
+/*INVALID METHOD*/
 
 send_error(
     'Method not allowed.',
