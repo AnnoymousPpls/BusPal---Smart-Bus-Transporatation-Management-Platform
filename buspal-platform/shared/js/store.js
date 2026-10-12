@@ -1,18 +1,7 @@
-/* ============================================================
+/*  
    BusPal — Shared Booking / Feedback / SOS Store (mock, client-side)
 
-   Same pattern as shared/js/auth.js: localStorage stands in for the
-   real backend so passenger, operator, and the conductor view all see
-   consistent data within one browser, instead of each page holding
-   its own private in-memory copy. Swap each function body for a real
-   fetch() call later — shapes stay the same.
-
-   Bookings are matched to a specific trip by (from, to, date, depTime)
-   rather than a shared numeric ID, since the passenger side's trip
-   listings and the operator side's Route/Departure records aren't
-   unified into one id space yet — this is a deliberate bridge, not
-   the final data model. Note it as a simplification in your report.
-   ============================================================ */
+    */
 
 const BusPalStore = (() => {
   const BOOKINGS_KEY = "buspal_bookings";

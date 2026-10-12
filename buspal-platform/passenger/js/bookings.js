@@ -1,10 +1,5 @@
-/* ============================================================
-   BusPal — Passenger Dashboard — My Bookings
-   bindBookingRowActions/boardingPassHTML now live in core.js since
-   overview.js and book.js also need them — a local IIFE here would
-   hide them from those files.
-   Registers itself into the shared ROUTES map (see core.js).
-   ============================================================ */
+/* BusPal — Passenger Dashboard — My Bookings */
+
 
 (() => {
   async function renderBookings(root) {

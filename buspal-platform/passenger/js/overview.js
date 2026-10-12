@@ -1,16 +1,27 @@
-/* ============================================================
+/*  
    BusPal — Passenger Dashboard — Overview
-   Registers itself into the shared ROUTES map (see core.js).
-   ============================================================ */
+    */
 
+   
 (() => {
   async function renderOverview(root) {
     root.innerHTML = `<div class="empty"><div class="ico">◈</div>Loading your overview…</div>`;
     const [bookings, profile, liveTrip] = await Promise.all([BusPalAPI.getBookings(), BusPalAPI.getProfile(), BusPalAPI.getLiveTrip()]);
-    const upcoming = bookings.filter(b => b.status === "upcoming");
-    const completed = bookings.filter(b => b.status === "completed");
-    const next = upcoming[0];
+   // Calculate the real booking status using the travel date.
+// This prevents expired bookings from appearing as upcoming.
+  const upcoming = bookings
+  .filter(b => getBookingEffectiveStatus(b) === "upcoming")
+  .sort((a, b) => {
+    const dateA = String(a.trip?.date || a.date || "");
+    const dateB = String(b.trip?.date || b.date || "");
+    return dateA.localeCompare(dateB);
+  });
 
+  const completed = bookings.filter(
+  b => getBookingEffectiveStatus(b) === "completed"
+  );
+
+  const next = upcoming[0] || null;
     root.innerHTML = `
       <div class="bus-hero-wrap" id="busHeroWrap">
         <div class="bus-hero-media" id="busHeroMedia"></div>
@@ -30,7 +41,21 @@
               <span class="ticket-pulse" style="position:static"><span class="dot"></span> Live</span>
               <div>
                 <div class="cell-strong">${esc(liveTrip.from)} → ${esc(liveTrip.to)}</div>
-                <div class="muted small">Bus ${esc(liveTrip.busPlate || "TBA")} · ${liveTrip.stops.find(s => s.status === "current")?.name ? "Currently near " + esc(liveTrip.stops.find(s => s.status === "current").name) : ""}</div>
+                <div class="muted small">
+                  Bus ${esc(liveTrip.busPlate || "TBA")}
+                  ·
+                  ${
+                   Array.isArray(liveTrip.stops) &&
+                   liveTrip.stops.find(s => s.status === "current")
+                   ? "Currently near " +
+                    esc(
+                   liveTrip.stops.find(
+                    s => s.status === "current"
+                  ).name
+                      )
+                    : "Live tracking available"
+                      }
+                    </div>
               </div>
             </div>
             <span class="badge info">ETA ${formatEta(liveTrip.etaMinutes)}</span>
@@ -41,7 +66,7 @@
       <div class="grid-2">
         <div class="card card-pad">
           <h3 style="margin-bottom:12px">Your next trip</h3>
-          ${next ? boardingPassHTML(next, { compact: true }) : `
+          ${next ? nextTripHTML(next) : `
             <div class="empty">
               <div class="ico">▤</div>
               No upcoming trips yet.
@@ -84,6 +109,30 @@
     root.querySelector("#ovSOS")?.addEventListener("click", openSOSModal);
     bindBookingRowActions(root);
     setupBusHero(root);
+  }
+
+  // Compact "next trip" summary with a View e-ticket button.
+  // (The old compact boarding pass had no button and left an empty QR box in the
+  //  page, which also made the QR in the e-ticket popup render in the wrong place.)
+  function nextTripHTML(b) {
+    const t = b.trip || {};
+    const seats = Array.isArray(b.seats) ? b.seats.map(esc).join(", ") : "";
+    return `
+      <div class="nt-row">
+        <div class="nt-route">${esc(t.from)} → ${esc(t.to)}</div>
+        ${bookingStatusBadge(getBookingEffectiveStatus(b))}
+      </div>
+      <div class="nt-meta">
+        <div><div class="lbl">Date</div><div class="val">${esc(t.date)}</div></div>
+        <div><div class="lbl">Departs</div><div class="val">${esc(t.depTime)}</div></div>
+        <div><div class="lbl">Bus</div><div class="val">${esc(t.plate || "TBA")}${t.busType ? " · " + esc(t.busType) : ""}</div></div>
+        <div><div class="lbl">Seats</div><div class="val">${seats}</div></div>
+        <div><div class="lbl">PNR</div><div class="val">${esc(b.pnr)}</div></div>
+      </div>
+      <div class="nt-actions">
+        <button class="btn brand" data-view-pass="${esc(b.id)}">View e-ticket</button>
+        <button class="btn" data-go="bookings">View all bookings</button>
+      </div>`;
   }
 
   // ---------- 3D scroll hero ----------

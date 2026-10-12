@@ -1,22 +1,6 @@
-/* ============================================================
+/*  
    BusPal — Shared Seat Layout Generator
-
-   Matches BT Express's actual paper seat chart: sequential numbering
-   down the coach, 2 seats + aisle + 2 seats per row, with a full-width
-   back bench taking whatever seats don't fit evenly into rows of 4.
-
-   Example (37 seats — verified against the real BT Express sheet):
-     Row 1: 01 02 | 03 04
-     Row 2: 05 06 | 07 08
-     ...
-     Row 8: 29 30 | 31 32
-     Back : 33 34 35 36 37   (5-seat bench, no aisle)
-
-   Works for any capacity, not just 37/49/51 — picks whichever back-row
-   size (5, then 3, then others) divides the remaining seats evenly
-   into rows of 4, so odd fleet sizes still lay out sensibly instead
-   of erroring or leaving a lopsided last row.
-   ============================================================ */
+  */
 
 const SeatLayout = (() => {
 
