@@ -1,14 +1,7 @@
-/* ============================================================
+/*  
    BusPal — Shared Auth Store
 
-   Real PHP + MySQL backend authentication.
-
-   Session/token information is stored in sessionStorage so
-   Passenger and Operator can be tested in separate browser tabs
-   without one tab overwriting the other's authentication token.
-
-   Passwords are never stored in browser storage.
-   ============================================================ */
+     */
 
 const AuthStore = (() => {
   const SESSION_KEY = "buspal_session";
@@ -205,6 +198,9 @@ const AuthStore = (() => {
     };
   }
 
+  /*
+   * Forgot password / password reset.
+   */
   async function requestPasswordReset(email) {
     const result = await apiRequest(
       "/auth/reset-password.php",
@@ -212,6 +208,34 @@ const AuthStore = (() => {
         method: "POST",
         body: JSON.stringify({
           email,
+        }),
+      }
+    );
+
+    if (result.error) {
+      return { error: result.error };
+    }
+
+    return result.data || result;
+  }
+
+  /*
+   * Change password from the logged-in Passenger Profile.
+   *
+   * This is different from requestPasswordReset().
+   * The passenger must provide their current password.
+   */
+  async function changePassword(
+    currentPassword,
+    newPassword
+  ) {
+    const result = await apiRequest(
+      "/auth/change-password.php",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
         }),
       }
     );
@@ -250,6 +274,7 @@ const AuthStore = (() => {
     login,
     registerPassenger,
     requestPasswordReset,
+    changePassword,
     setSession,
     getSession,
     clearSession,

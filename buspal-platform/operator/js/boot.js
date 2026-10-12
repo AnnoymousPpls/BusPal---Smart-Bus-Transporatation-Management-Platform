@@ -1,9 +1,4 @@
-/* ============================================================
-   BusPal — Operator Dashboard — Boot
-   MUST be the last <script> tag on the page — every feature file
-   (overview.js, buses.js, routes.js, ...) needs to have already
-   registered its entry into ROUTES_MAP before go() is first called.
-   ============================================================ */
+/* BusPal — Operator Dashboard — Boot */
 
 (() => {
   // ---------- session UI (name/role badge + avatar initials) ----------

@@ -1,16 +1,4 @@
-/* ============================================================
-   BusPal — Operator Dashboard — Core
-   Shared DOM refs, helpers, router, and session/SOS chrome.
-   MUST load before every other operator/js/*.js file — those files
-   register themselves into ROUTES_MAP (declared here) and use the
-   $/$$/toast/openModal/etc. helpers defined here.
-
-   No IIFE wrapper on purpose: classic (non-module) scripts share one
-   global scope, so top-level declarations here are directly usable
-   by every script tag that loads after this one. Simpler than wiring
-   up window.* exports one by one, and keeps every file a plain
-   <script src> tag — no build step, matches the rest of the stack.
-   ============================================================ */
+/* BusPal — Operator Dashboard — Core */
 
 const content = document.getElementById("content");
 const pageTitle = document.getElementById("pageTitle");
@@ -110,7 +98,7 @@ const emptyHTML = (msg) => `<div class="empty"><div class="ico">◇</div>${msg}<
   });
 
   async function refreshSOSBadge() {
-    const alerts = await OpsAPI.getSOSAlerts();
+    const alerts = await BusPalAPI.getSOSAlerts();
     const open = alerts.filter(a => a.status !== "resolved");
     $("#sosLiveBadge").hidden = open.length === 0;
     if (open.length) $("#sosLiveBadge").textContent = `⚠ ${open.length} SOS active`;

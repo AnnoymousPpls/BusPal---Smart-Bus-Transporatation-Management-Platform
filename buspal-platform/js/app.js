@@ -205,119 +205,293 @@
       );
 
     });
+ /* ============================================================
+   FORGOT PASSWORD
+   ============================================================ */
+
+const forgotLink = $("#forgotLink");
+const backToLogin = $("#backToLogin");
+
+const loginPanel = $("#panel-login");
+const forgotPanel = $("#panel-forgot");
+
+const forgotForm = $("#forgotForm");
 
 
-  /* ============================================================
-     FORGOT PASSWORD
-     ============================================================ */
+// ============================================================
+// OPEN FORGOT PASSWORD PANEL
+// ============================================================
 
-  const forgotForm =
-    $("#forgotForm");
+if (forgotLink) {
+  forgotLink.addEventListener("click", () => {
+
+    if (loginPanel) {
+      loginPanel.classList.remove("active");
+    }
+
+    if (forgotPanel) {
+      forgotPanel.classList.add("active");
+    }
+
+    // Copy the login email automatically
+    const loginEmail = $("#liEmail");
+    const forgotEmail = $("#fpEmail");
+
+    if (
+      loginEmail &&
+      forgotEmail &&
+      loginEmail.value.trim()
+    ) {
+      forgotEmail.value =
+        loginEmail.value.trim();
+    }
+
+    // Clear previous messages
+    const errorBox = $("#forgotError");
+    const resultBox = $("#forgotResult");
+
+    if (errorBox) {
+      errorBox.textContent = "";
+    }
+
+    if (resultBox) {
+      resultBox.hidden = true;
+      resultBox.innerHTML = "";
+    }
+
+  });
+}
 
 
-  if (forgotForm) {
+// ============================================================
+// BACK TO LOGIN
+// ============================================================
 
-    forgotForm.addEventListener(
-      "submit",
-      async event => {
+if (backToLogin) {
+  backToLogin.addEventListener("click", () => {
 
-        event.preventDefault();
+    if (forgotPanel) {
+      forgotPanel.classList.remove("active");
+    }
+
+    if (loginPanel) {
+      loginPanel.classList.add("active");
+    }
+
+    // Clear messages
+    const errorBox = $("#forgotError");
+    const resultBox = $("#forgotResult");
+
+    if (errorBox) {
+      errorBox.textContent = "";
+    }
+
+    if (resultBox) {
+      resultBox.hidden = true;
+      resultBox.innerHTML = "";
+    }
+
+  });
+}
 
 
-        const email =
-          $("#fpEmail")
-            .value
-            .trim();
+// ============================================================
+// SUBMIT PASSWORD RESET
+// ============================================================
 
+if (forgotForm) {
 
-        const resultBox =
-          $("#forgotResult");
+  forgotForm.addEventListener(
+    "submit",
+    async (event) => {
 
+      event.preventDefault();
 
-        $("#forgotError")
-          .textContent = "";
+      const emailInput = $("#fpEmail");
+      const errorBox = $("#forgotError");
+      const resultBox = $("#forgotResult");
 
+      const email =
+        emailInput
+          ? emailInput.value.trim()
+          : "";
 
+      // Clear previous messages
+      if (errorBox) {
+        errorBox.textContent = "";
+      }
+
+      if (resultBox) {
         resultBox.hidden = true;
+        resultBox.innerHTML = "";
+      }
 
 
-        try {
+      // --------------------------------------------------------
+      // Validate email
+      // --------------------------------------------------------
 
-          const result =
-            await AuthStore.requestPasswordReset(
-              email
-            );
+      if (!email) {
+
+        if (errorBox) {
+          errorBox.textContent =
+            "Please enter your email address.";
+        }
+
+        return;
+      }
 
 
-          if (result.error) {
+      if (
+        typeof Validate !== "undefined" &&
+        typeof Validate.isValidEmail === "function" &&
+        !Validate.isValidEmail(email)
+      ) {
 
-            $("#forgotError")
-              .textContent =
+        if (errorBox) {
+          errorBox.textContent =
+            "Enter a valid email address.";
+        }
+
+        return;
+      }
+
+
+      // --------------------------------------------------------
+      // Disable button
+      // --------------------------------------------------------
+
+      const submitButton =
+        forgotForm.querySelector(
+          'button[type="submit"]'
+        );
+
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = "Sending…";
+      }
+
+
+      // --------------------------------------------------------
+      // Call PHP backend
+      // --------------------------------------------------------
+
+      try {
+
+        const result =
+          await AuthStore.requestPasswordReset(
+            email
+          );
+
+
+        console.log(
+          "Password reset response:",
+          result
+        );
+
+
+        // ------------------------------------------------------
+        // Backend returned an error
+        // ------------------------------------------------------
+
+        if (result && result.error) {
+
+          if (errorBox) {
+            errorBox.textContent =
               result.error;
-
-            return;
-
           }
 
+          return;
+        }
 
-          resultBox.hidden =
-            false;
 
+        // ------------------------------------------------------
+        // Success
+        // ------------------------------------------------------
+
+        if (resultBox) {
+
+          resultBox.hidden = false;
 
           resultBox.innerHTML = `
 
             <strong>
-              Temporary password issued
+              Password reset successful
             </strong>
 
             <p
               class="small"
-              style="margin:4px 0 0"
+              style="margin:6px 0 10px"
             >
-              In a production system this
-              would be delivered through a
-              secure password-reset flow.
-              For this demo, the temporary
-              password is shown here.
+              Your temporary password is:
             </p>
 
-            <div class="auth-demo-row">
+            <div
+              class="auth-demo-row"
+              style="margin-top:8px"
+            >
 
               <span>
                 New password
               </span>
 
               <code>
-                ${result.tempPassword}
+                ${result.tempPassword || "Not returned"}
               </code>
 
             </div>
 
+            <p
+              class="small muted"
+              style="margin-top:10px"
+            >
+              Use this temporary password to
+              log in to your BusPal account.
+            </p>
+
           `;
 
-
-          event.target.reset();
-
-
-        } catch (error) {
-
-          console.error(
-            "Password reset error:",
-            error
-          );
+        }
 
 
-          $("#forgotError")
-            .textContent =
+        // Clear email field
+        forgotForm.reset();
+
+
+      } catch (error) {
+
+        console.error(
+          "Password reset error:",
+          error
+        );
+
+
+        if (errorBox) {
+
+          errorBox.textContent =
             error.message ||
             "Unable to connect to the server.";
 
         }
 
-      }
-    );
+      } finally {
 
-  }
+        // Re-enable button
+        if (submitButton) {
+
+          submitButton.disabled = false;
+
+          submitButton.textContent =
+            "Send reset";
+
+        }
+
+      }
+
+    }
+  );
+
+}
 
 
   /* ============================================================

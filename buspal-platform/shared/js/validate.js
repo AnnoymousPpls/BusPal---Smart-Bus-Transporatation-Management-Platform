@@ -1,11 +1,7 @@
-/* ============================================================
+/* 
    BusPal — Shared Validation Utilities
 
-   Kept deliberately simple and dependency-free (matches the plain-JS
-   stack). Used by every form across passenger/operator/conductor so
-   "what counts as a valid phone number" is defined once, not copied
-   into six different forms with six chances to drift out of sync.
-   ============================================================ */
+   */
 
 const Validate = (() => {
 

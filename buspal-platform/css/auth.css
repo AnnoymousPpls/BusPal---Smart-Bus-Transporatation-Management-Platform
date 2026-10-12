@@ -31,23 +31,69 @@
 .auth-hero-content{position:relative;z-index:2;padding:40px 40px 44px;color:#fff}
 .auth-hero-content .brand-name{color:#fff}
 .auth-hero-content .brand-mark{filter:drop-shadow(0 2px 6px rgba(0,0,0,.4))}
-.auth-brand{margin-bottom:34px}
+.auth-brand {
+    position: absolute;
+    top: 40px;
+    left: 40px;
+    margin: 0;
+   transform: translate(0px, -20px);
+}
+.auth-hero-copy {
+    margin-top: 190px;
+}
 .auth-hero-kicker{
-  font-family:var(--mono);font-size:11px;letter-spacing:2.5px;text-transform:uppercase;
-  color:rgba(255,255,255,.65);margin-bottom:10px;
+  font-family:var(--mono);
+  font-size:12px;
+  letter-spacing:4px;
+  text-transform:uppercase;
+  color:rgba(255,255,255,.75);
+  margin-bottom:14px;
 }
 .auth-hero-headline{
-  font-family:'Cormorant Garamond',Georgia,serif;font-weight:600;
-  font-size:clamp(32px,4vw,46px);line-height:1.12;margin:0 0 14px;
-  text-shadow:0 2px 18px rgba(0,0,0,.35);
+  font-family:'Cormorant Garamond', Georgia, serif;
+  font-weight:600;
+  font-size:clamp(38px,4vw,52px);
+  line-height:1.05;
+  letter-spacing:-0.5px;
+  margin:0 0 18px;
+  color:#ffffff;
+  text-shadow:
+    0 3px 20px rgba(0,0,0,.55);
+}.auth-hero-sub{
+  margin:0;
+  max-width:34ch;
+  color:rgba(255,255,255,.82);
+  font-size:15px;
+  line-height:1.7;
+  font-weight:400;
 }
-.auth-hero-sub{margin:0;max-width:36ch;color:rgba(255,255,255,.78);font-size:14.5px;line-height:1.6}
 .auth-brand-chips{display:flex;flex-direction:column;gap:8px;margin-top:26px}
 .auth-brand-chips .hero-chip{
-  width:fit-content;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:rgba(255,255,255,.9);
-  backdrop-filter:blur(6px);
+    width:fit-content;
+    background:transparent;
+    color:rgba(255,255,255,.85);
+    font-size:14px;
+    font-weight:500;
+    letter-spacing:.2px;
+    padding:4px 0;
+    border:none;
+    backdrop-filter:none;
+    position:relative;
+    padding-left:18px;
 }
 
+.auth-brand-chips .hero-chip::before{
+    content:"";
+    position:absolute;
+    left:0;
+    top:50%;
+    transform:translateY(-50%);
+    width:7px;
+    height:7px;
+    border-radius:50%;
+    background:#4da3ff;
+    box-shadow:0 0 10px #4da3ff;
+}
 .auth-card-side{padding:40px;display:flex;align-items:center}
 .auth-card{padding:0;background:transparent;border:none;box-shadow:none;width:100%}
 
