@@ -1,14 +1,12 @@
-/* ============================================================
+/*  
    BusPal — Passenger Dashboard — Feedback & SOS
-   openSOSModal() lives in core.js since Overview, Live Tracking, and
-   boot.js's floating SOS button all need to call it too.
-   Registers itself into the shared ROUTES map (see core.js).
-   ============================================================ */
+     */
 
+   
 (() => {
   async function renderSupport(root) {
     root.innerHTML = `<div class="empty"><div class="ico">✆</div>Loading…</div>`;
-    const [myFeedback, mySOS] = await Promise.all([BusPalAPI.getMyFeedback(), BusPalAPI.getMySOSAlerts()]);
+    const [myFeedback, mySOS, myBookings] = await Promise.all([BusPalAPI.getMyFeedback(), BusPalAPI.getMySOSAlerts(),BusPalAPI.getMyBookings()]);
 
     root.innerHTML = `
       <div class="grid-2">
@@ -22,9 +20,13 @@
                 <option value="complaint">Complaint</option>
               </select>
             </div>
-            <div class="field-v">
-              <label for="fbTrip">Related trip (optional)</label>
-              <input type="text" id="fbTrip" placeholder="e.g. BK-88231 or Colombo → Kandy" />
+            <div class="field-v"> 
+                  <label for="fbTrip">Related trip</label> 
+                  <select id="fbTrip">
+                   <option value="">
+                   Select travelled trip
+                   </option>
+                  </select>
             </div>
             <div class="field-v">
               <label for="fbMsg">Message</label>
@@ -60,8 +62,10 @@
       </div>
     `;
 
-    drawMyFeedback(root, myFeedback);
-    drawMySOS(root, mySOS);
+   drawMyFeedback(root, myFeedback); 
+   drawMySOS(root, mySOS);
+
+   loadFeedbackTrips(root, myBookings);
 
     $("#supportSOS", root).addEventListener("click", openSOSModal);
     $("#feedbackForm", root).addEventListener("submit", async (e) => {
@@ -69,16 +73,106 @@
       const msg = $("#fbMsg", root).value.trim();
       if (!msg) { $("#fbErr", root).textContent = "Please enter a message before submitting."; return; }
       $("#fbErr", root).textContent = "";
-      await BusPalAPI.submitFeedback({
-        type: $("#fbType", root).value,
-        trip: $("#fbTrip", root).value.trim(),
-        message: msg,
-      });
+       const selectedTrip =
+    $("#fbTrip", root).selectedOptions[0];
+
+
+await BusPalAPI.submitFeedback({ 
+
+    type:
+        $("#fbType", root).value,
+
+
+    bookingId:
+        $("#fbTrip", root).value || null,
+
+
+    trip:
+        selectedTrip
+        ? selectedTrip.textContent
+        : "",
+
+
+    message:
+        msg
+
+});
       e.target.reset();
       toast("Thanks — your message was sent to BT Express.");
       go("support");
     });
   }
+
+
+  function loadFeedbackTrips(root, bookings){
+
+    const select =
+        $("#fbTrip", root);
+
+
+    if(!select || !Array.isArray(bookings))
+        return;
+
+
+    const today =
+        new Date();
+
+
+    bookings.forEach(booking => {
+
+
+        const journeyDate =
+            new Date(
+                booking.trip.date
+            );
+
+
+        const daysAfter =
+            Math.floor(
+                (today - journeyDate)
+                /
+                (1000 * 60 * 60 * 24)
+            );
+
+
+        /*
+          Allow feedback only:
+          journey date → 3 days after
+        */
+
+        if(
+            daysAfter >= 0 &&
+            daysAfter <= 3 &&
+            booking.status !== "cancelled"
+        ){
+
+
+            const option =
+                document.createElement("option");
+
+
+            option.value =
+                booking.id;
+
+
+            option.textContent =
+                `${booking.pnr} | ${
+                    booking.trip.from
+                } → ${
+                    booking.trip.to
+                } | ${
+                    booking.trip.date
+                }`;
+
+
+            select.appendChild(option);
+
+        }
+
+    });
+
+
+}
 
   function drawMyFeedback(root, items) {
     $("#myFeedbackWrap", root).innerHTML = items.length ? items.map(f => `
