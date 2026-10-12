@@ -1,13 +1,10 @@
-/* ============================================================
-   BusPal — Operator Dashboard — Conductor View
-   Real PHP + MySQL backend
-   ============================================================ */
+/*BusPal — Operator Dashboard — Conductor View
+   Replacement aligned with conductor/index.php API
+*/
 
 (() => {
 
-  /* ----------------------------------------------------------
-     Get today's date using the user's local timezone
-     ---------------------------------------------------------- */
+  /* today's date user local timezone */
 
   function getTodayLocal() {
     const date = new Date();
@@ -21,9 +18,7 @@
   }
 
 
-  /* ----------------------------------------------------------
-     Render Conductor View
-     ---------------------------------------------------------- */
+  /* Render Conductor View*/
 
   async function renderConductor(root) {
 
@@ -40,7 +35,7 @@
     try {
 
       trips =
-        await OpsAPI.getConductorTrips();
+        await BusPalAPI.getConductorTrips();
 
     } catch (error) {
 
@@ -264,7 +259,7 @@
       try {
 
         const result =
-          await OpsAPI.getManifest(
+          await BusPalAPI.getManifest(
             trip.from,
             trip.to,
             date,
@@ -603,9 +598,10 @@
                       </div>
 
 
-                      <a
-                        class="btn sm"
-                        href="tel:${esc(
+                      <button
+                        class="btn sm manifest-phone-btn"
+                        type="button"
+                        data-phone="${esc(
                           booking.phone ||
                           ""
                         )}"
@@ -615,7 +611,7 @@
                           booking.phone ||
                           "—"
                         )}
-                      </a>
+                      </button>
 
                     </div>
                   `
@@ -950,7 +946,7 @@
 
             try {
 
-              await OpsAPI.counterBooking({
+              await BusPalAPI.counterBooking({
 
                 from:
                   trip.from,
@@ -1072,7 +1068,7 @@
           try {
 
             const result =
-              await OpsAPI.getTripCode(
+              await BusPalAPI.getTripCode(
                 trip.from,
                 trip.to,
                 date,
